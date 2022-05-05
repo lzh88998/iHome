@@ -2,6 +2,10 @@ TARGET=
 OBJ=
 
 ROOT_DIR=.
+HIREDIS_LIB=$(ROOT_DIR)/3rd/hiredis/libhiredis.a
+HIREDIS_INCLUDE=$(ROOT_DIR)/3rd/hiredis
+
+LDFLAGS=-Wl,$(HIREDIS_LIB)
 
 # Fallback to gcc when $CC is not in $PATH.
 CC:=$(shell sh -c 'type $${CC%% *} >/dev/null 2>/dev/null && echo $(CC) || echo gcc')
@@ -14,7 +18,6 @@ REAL_LDFLAGS=$(LDFLAGS)
 
 all: $(TARGET)
 
-# Deps (use make dep to generate this)
 alloc.o: alloc.c fmacros.h alloc.h
 async.o: async.c fmacros.h alloc.h async.h hiredis.h read.h sds.h net.h dict.c dict.h win32.h async_private.h
 dict.o: dict.c fmacros.h alloc.h dict.h
@@ -30,12 +33,8 @@ hiredis: $(ROOT_DIR)/3rd/hiredis/
 	git submodule update --init --recursive
 	$(MAKE) -C $(ROOT_DIR)/3rd/hiredis/
 
-
-hiredis-example-libevent: examples/example-libevent.c adapters/libevent.h $(STLIBNAME)
-	$(CC) -o examples/$@ $(REAL_CFLAGS) -I. $< -levent $(STLIBNAME) $(REAL_LDFLAGS)
-
-.c.o:
-	$(CC) -std=c99 -c $(REAL_CFLAGS) $<
+cargador: src/cargador.c $(HIREDIS_LIB)
+	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS)
 
 clean:
 	rm -rf *.o

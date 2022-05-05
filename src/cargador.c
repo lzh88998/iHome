@@ -42,8 +42,8 @@ void getCallback(redisAsyncContext *c, void *r, void *privdata) {
     
     printf("get type: %d\n", reply->type);
     printf("get result: %s\n", reply->str);
-    printf("get elements: %d\n", reply->elements);
-    printf("get param: %d\n", (long)privdata);
+    printf("get elements: %zd\n", reply->elements);
+    printf("get param: %ld\n", (long)privdata);
     
     if(NULL != reply->str) {
         temp = (0 != strcmp("0", reply->str) ? 0x00 : 0x20) | ((long)privdata & 31);
@@ -71,11 +71,11 @@ void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
     }
     
     printf("sub reply type: %d\n", reply->type);
-    printf("sub reply elements: %d\n", reply->elements);
+    printf("sub reply elements: %zd\n", reply->elements);
     switch(reply->type) {
         case REDIS_REPLY_ARRAY: 
-            for(int i = 0; i < reply->elements; i++) {
-                printf("sub Array element %d: %s\n", i, reply->element[i]->str);
+            for(size_t i = 0; i < reply->elements; i++) {
+                printf("sub Array element %zd: %s\n", i, reply->element[i]->str);
             }
             
             if(4 == reply->elements) { // subscribe element 0 is "message", element 1 is key pattern element 2 is key element 3 is value string
@@ -126,7 +126,7 @@ void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
             printf("sub Double %lf\n", reply->dval);
         break;
         case REDIS_REPLY_INTEGER:
-            printf("sub Integer %ld\n", reply->integer);
+            printf("sub Integer %lld\n", reply->integer);
         break;
         }
 
@@ -150,11 +150,15 @@ void disconnectCallback(const redisAsyncContext *c, int status) {
 }
 
 void print_usage(int argc, char **argv) {
+    if(0 == argc) {
+        return;
+    }
+    
     printf("Invalid input parameters!\n");
     printf("Usage: (<optional parameters>)\n");
-    printf("%s id controller_ip controller_port <redis_ip> <redis_port>\n");
+    printf("%s id controller_ip controller_port <redis_ip> <redis_port>\n", argv[0]);
     printf("E.g.:\n");
-    printf("%s 1 192.168.100.100 5000 127.0.0.1 6379\n\n");
+    printf("%s 1 192.168.100.100 5000 127.0.0.1 6379\n\n", argv[0]);
 }
 
 int main (int argc, char **argv) {
@@ -175,8 +179,8 @@ l_start:
     int valopt; 
     socklen_t lon; 
 
-    char* serv_ip;
-    char* redis_ip;
+    const char* serv_ip;
+    const char* redis_ip;
     int serv_port, redis_port;
     
     if(argc < 4) {
