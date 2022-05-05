@@ -202,9 +202,9 @@ void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
                         if(NULL != idx_start) {
                             ++idx_start; // move to next pos;
                             if(0 == strcmp(EXIT_FLAG_VALUE, idx_start)) { // exit
-                                LOG_DETAILS("Exit flag found!");
-                                redisAsyncDisconnect(c);
+                                LOG_DETAILS("Subscribe exit flag found!");
                                 gs_exit = 1;
+                                redisAsyncDisconnect(c);
                             } else {
                                 int idx = atoi(++idx_start);
                                 status = (0 != strcmp("0", reply->element[3]->str) ? 0x00 : 0x20);
