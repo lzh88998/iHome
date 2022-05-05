@@ -26,8 +26,8 @@ sockcompat.o: sockcompat.c sockcompat.h
 test.o: test.c fmacros.h hiredis.h read.h sds.h alloc.h net.h sockcompat.h win32.h
 
 # Binaries:
-hiredis: $(ROOT_DIR)/3rd/hiredis/Makefile
-	git submodule update --init
+hiredis: $(ROOT_DIR)/3rd/hiredis/
+	git submodule update --init --recursive
 	$(MAKE) -C $(ROOT_DIR)/3rd/hiredis/
 
 
