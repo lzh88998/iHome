@@ -48,7 +48,8 @@ cargador:src/cargador.c $(HIREDIS_LIB) $(LOG_LIB)
 	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS)
 
 clean:
-	rm -rf *.o
+	rm -rf *.o *.a
+	rm -rf src/*.o
 
 dep:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -MM src/*.c

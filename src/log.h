@@ -3,13 +3,20 @@
 
 #include <stdio.h>
 
-#define LOG_LEVEL_ERROR		0
-#define LOG_LEVEL_WARNING	1
-#define LOG_LEVEL_INFO		2
-#define LOG_LEVEL_DEBUG		3
-#define LOG_LEVEL_DETAILES	4
+#define LOG_LEVEL_ERROR_NAME		"error"
+#define LOG_LEVEL_ERROR_WARNING		"warning"
+#define LOG_LEVEL_ERROR_INFO		"info"
+#define LOG_LEVEL_ERROR_DEBUG		"debug"
+#define LOG_LEVEL_ERROR_DETAILS		"details"
 
-void log_set_level(int level);
+#define LOG_LEVEL_ERROR				0
+#define LOG_LEVEL_WARNING			1
+#define LOG_LEVEL_INFO				2
+#define LOG_LEVEL_DEBUG				3
+#define LOG_LEVEL_DETAILES			4
+
+int log_set_level(char* level);
+void log_print_level_info(void);
 void log_with_level(int level, const char* fmt, ...);
 
 #define LOG_ERROR(fmt, ...)		log_with_level(LOG_LEVEL_ERROR, fmt, ##__VA_ARGS__);

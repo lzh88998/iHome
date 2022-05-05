@@ -135,25 +135,29 @@ void getCallback(redisAsyncContext *c, void *r, void *privdata) {
     if(NULL != reply->str) {
         temp = (0 != strcmp("0", reply->str) ? 0x00 : 0x20) | ((long)privdata & 31);
         if(-1 == send(gs_socket, &temp, 1, 0)) {
+            LOG_ERROR("Get send command to controller failed!");
             redisAsyncDisconnect(c);
             return;
         }
         
         if(-1 == recv(gs_socket, &temp, 1, 0)) {
+            LOG_ERROR("Get receive result from controller failed!");
             redisAsyncDisconnect(c);
         }
         else {
             LOG_DETAILS("Get received: 0x%x", temp);
         }
     }
+    LOG_DEBUG("Get channel %ld callback finished!", (long)privdata);
 }
 
 /*
- * During start phase, the cargador will get expected
- * status from redis and set the controller PINs to 
- * exptcted status
+ * After start phase, the cargador will subscribe expected 
+ * message channels to keep the controller's output PIN in
+ * the expected status with value specified in redis.
  * 
- * This callback function is used to do this task.
+ * This callback function will be called when there is new
+ * expected value.
  * 
  * Parameters:
  * redisAsyncContext *c     Connection context to redis
@@ -178,6 +182,7 @@ void getCallback(redisAsyncContext *c, void *r, void *privdata) {
  */
 void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
+    LOG_DEBUG("Subscribe callback!");
     if (reply == NULL) {
         if (c->errstr) {
             LOG_ERROR("Subscribe errstr: %s", c->errstr);
@@ -198,7 +203,7 @@ void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
                 if(NULL != reply->element[0] && NULL != reply->element[0]->str && 0 == strcmp(REDIS_MESSAGE_TYPE, reply->element[0]->str)) {
                     if(NULL != reply->element[2] && NULL != reply->element[3]) {
                         unsigned char status;
-                        char *idx_start = strrchr(reply->element[2]->str);
+                        char *idx_start = strrchr(reply->element[2]->str, '/');
                         if(NULL != idx_start) {
                             ++idx_start; // move to next pos;
                             if(0 == strcmp(EXIT_FLAG_VALUE, idx_start)) { // exit
@@ -209,16 +214,18 @@ void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
                                 int idx = atoi(++idx_start);
                                 status = (0 != strcmp("0", reply->element[3]->str) ? 0x00 : 0x20);
                                 
-                                printf("Index: %d Value: 0x%x", idx, status);
+                                LOG_DETAILS("Subscribe Index: %d Value: 0x%x", idx, status);
                                 status |= (idx & 31);
                                 
                                 if(-1 == send(gs_socket, &status, 1, 0)) {
+                                    LOG_ERROR("Subscribe send command to controller failed!");
                                     redisAsyncDisconnect(c);
                                 } else if(-1 == recv(gs_socket, &status, 1, 0)) {
+                                    LOG_ERROR("Subscribe receive result from controller failed!");
                                     redisAsyncDisconnect(c);
                                 }
                                 else {
-                                    printf("Subscribe received: 0x%x", status);
+                                    LOG_DETAILS("Subscribe received: 0x%x", status);
                                 }
                             }
                         } else {
@@ -232,47 +239,128 @@ void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
         case REDIS_REPLY_VERB:
         case REDIS_REPLY_STRING:
         case REDIS_REPLY_BIGNUM:
-            LOG_DETAILS("sub argv[%s]: %s", (char*)privdata, reply->str);
+            LOG_DETAILS("Subscribe argv[%s]: %s", (char*)privdata, reply->str);
         break;
         case REDIS_REPLY_DOUBLE:
-            LOG_DETAILS("sub Double %lf", reply->dval);
+            LOG_DETAILS("Subscribe Double %lf", reply->dval);
         break;
         case REDIS_REPLY_INTEGER:
-            LOG_DETAILS("sub Integer %lld", reply->integer);
+            LOG_DETAILS("Subscribe Integer %lld", reply->integer);
         break;
         }
 
-    printf("subscribe finished!");
+    LOG_DEBUG("Subscribe finished!");
 }
 
+/*
+ * When successfully connected to redis or failed to connect to redis,
+ * this function will be called to update the status
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * int status               Status code for redis connection, REDIS_OK
+ *                          means successfully connected to redis server.
+ *                          Other code means failure;
+ * 
+ * Return value:
+ * There is no return value
+ * 
+ */
 void connectCallback(const redisAsyncContext *c, int status) {
     if (status != REDIS_OK) {
         printf("Error: %s", c->errstr);
         return;
     }
-    printf("Connected...");
+    LOG_INFO("Connected...");
 }
 
+/*
+ * When exiting the program or there are anything goes wrong and 
+ * disconnect is called, this function is called and provide the
+ * disconnect result
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * int status               Status code for disconnect from redis, 
+ *                          REDIS_OK means successfully disconnected 
+ *                          from to redis server Other code means 
+ *                          failure;
+ * 
+ * Return value:
+ * There is no return value
+ * 
+ */
 void disconnectCallback(const redisAsyncContext *c, int status) {
     if (status != REDIS_OK) {
         printf("Error: %s", c->errstr);
         return;
     }
-    printf("Disconnected...");
+    LOG_INFO("Disconnected...");
 }
 
+/*
+ * When user input incorrect data, this service will
+ * exit immediately. And with this function, it can
+ * provide user a friendly hint for usage.
+ * 
+ * Parameters:
+ * int argc                 Number of input parameters, same function 
+ *                          with argc of main.
+ * char **argv              Actual input parameters, same function with
+ *                          argv of main.
+ * 
+ * Return value:
+ * There is no return value
+ * 
+ * Note: in this function we use printf not using log
+ * as it is necessary to ensure the hint is always 
+ * printed out without the loglevel configuration.
+ * 
+ */
 void print_usage(int argc, char **argv) {
     if(0 == argc) {
         return;
     }
     
-    printf("Invalid input parameters!");
-    printf("Usage: (<optional parameters>)");
-    printf("%s id controller_ip controller_port <redis_ip> <redis_port>", argv[0]);
-    printf("E.g.:");
-    printf("%s 1 192.168.100.100 5000 127.0.0.1 6379", argv[0]);
+    printf("Invalid input parameters!\r\n");
+    printf("Usage: (<optional parameters>)\r\n");
+    printf("%s log_level controller_ip controller_port <redis_ip> <redis_port>\r\n", argv[0]);
+    log_print_level_info();
+    printf("E.g.:\r\n");
+    printf("%s debug 192.168.100.100 5000 127.0.0.1 6379\r\n", argv[0]);
 }
 
+/*
+ * Main entry of the service. It will first connect
+ * to the controller, and setup send/recv timeout
+ * to ensure the network traffic is not blocking
+ * and can fail fast.
+ * 
+ * Then it will connect to redis and get expected
+ * status for each controller's output PIN and 
+ * send the command to controller through 
+ * getCallback.
+ * 
+ * And then the redis connection will use psubscribe
+ * to subscribe the expected status and if there
+ * is any update of expected status, the 
+ * subscribeCallback will process the update message
+ * and send command to controller
+ * 
+ * Parameters:
+ * int argc                 Number of input parameters, same function 
+ *                          with argc of main.
+ * char **argv              Actual input parameters, same function with
+ *                          argv of main.
+ * 
+ * Return value:
+ * There is no return value
+ * 
+ * Note: in this function we use printf not using log
+ * as it is necessary to ensure the hint is always 
+ * printed out without the loglevel configuration.
+ * 
+ */
 int main (int argc, char **argv) {
     
 l_start:
@@ -295,9 +383,17 @@ l_start:
     const char* redis_ip;
     int serv_port, redis_port;
     
+    LOG_INFO("===================Service start!===================");
+    LOG_INFO("Parsing parameters!");
+    
     if(argc < 4) {
         print_usage(argc, argv);
         return -1;
+    }
+    
+    if(0 > log_set_level(argv[1])) {
+        print_usage(argc, argv);
+        return -2;
     }
     
     serv_ip = argv[2];
@@ -317,19 +413,19 @@ l_start:
     serv_addr.sin_port = htons(serv_port);
     ret = inet_pton(AF_INET, serv_ip, &serv_addr.sin_addr.s_addr);
     if(-1 == ret) {
-        printf("Error assigning address!");
+        LOG_ERROR("Error assigning address!");
         goto l_start;
     }
     
     gs_socket = socket(AF_INET, SOCK_STREAM, 0);
     if(-1 == gs_socket) {
-        printf("Error connecting to controller!");
+        LOG_ERROR("Error connecting to controller!");
         goto l_start;
     }
         
-    printf("Socket: %d!", gs_socket);
-    printf("Socket Family: %d", serv_addr.sin_family);
-    printf("Socket Port: %d", serv_addr.sin_port);
+    LOG_DETAILS("Socket: %d!", gs_socket);
+    LOG_DETAILS("Socket Family: %d", serv_addr.sin_family);
+    LOG_DETAILS("Socket Port: %d", serv_addr.sin_port);
     
     setsockopt(gs_socket, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(struct timeval));
     setsockopt(gs_socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(struct timeval));
@@ -339,70 +435,70 @@ l_start:
     
     // Set non-blocking 
     if( (ret = fcntl(gs_socket, F_GETFL, NULL)) < 0) { 
-        printf("Error fcntl(..., F_GETFL) (%s)", strerror(errno)); 
+        LOG_ERROR("Error fcntl(..., F_GETFL) (%s)", strerror(errno)); 
         goto l_socket_cleanup;
     } 
     ret |= O_NONBLOCK; 
     if( fcntl(gs_socket, F_SETFL, ret) < 0) { 
-        printf("Error fcntl(..., F_SETFL) (%s)", strerror(errno)); 
+        LOG_ERROR("Error fcntl(..., F_SETFL) (%s)", strerror(errno)); 
         goto l_socket_cleanup;
     } 
     // Trying to connect with timeout 
     ret = connect(gs_socket, (struct sockaddr *)&serv_addr, sizeof(serv_addr)); 
     if (ret < 0) { 
         if (EINPROGRESS == errno) { 
-            printf("EINPROGRESS in connect() - selecting"); 
+            LOG_DEBUG("EINPROGRESS in connect() - selecting"); 
             do { 
                 FD_ZERO(&myset); 
                 FD_SET(gs_socket, &myset); 
                 ret = select(gs_socket+1, NULL, &myset, NULL, &timeout); 
                 if (ret < 0 && EINTR != errno) { 
-                    printf("Error connecting %d - %s", errno, strerror(errno)); 
+                    LOG_ERROR("Error connecting %d - %s", errno, strerror(errno)); 
                     exit(0); 
                 } 
                 else if (ret > 0) { 
                     // Socket selected for write 
                     lon = sizeof(int); 
                     if (getsockopt(gs_socket, SOL_SOCKET, SO_ERROR, (void*)(&valopt), &lon) < 0) { 
-                        printf("Error in getsockopt() %d - %s", errno, strerror(errno)); 
+                        LOG_ERROR("Error in getsockopt() %d - %s", errno, strerror(errno)); 
                         goto l_socket_cleanup;
                     } 
                     // Check the value returned... 
                     if (valopt) { 
-                        printf("Error in delayed connection() %d - %s", valopt, strerror(valopt)); 
+                        LOG_ERROR("Error in delayed connection() %d - %s", valopt, strerror(valopt)); 
                         goto l_socket_cleanup;
                     } 
                     break; 
                 } 
                 else { 
-                    printf("Timeout in select() - Cancelling!"); 
+                    LOG_ERROR("Timeout in select() - Cancelling!"); 
                     goto l_socket_cleanup;
                 } 
             } while (1); 
         } 
         else { 
-            printf("Error connecting %d - %s", errno, strerror(errno)); 
+            LOG_ERROR("Error connecting %d - %s", errno, strerror(errno)); 
             goto l_socket_cleanup;
         } 
     } 
     // Set to blocking mode again... 
     if( (ret = fcntl(gs_socket, F_GETFL, NULL)) < 0) { 
-        printf("Error fcntl(..., F_GETFL) (%s)", strerror(errno)); 
+        LOG_ERROR("Error fcntl(..., F_GETFL) (%s)", strerror(errno)); 
         goto l_socket_cleanup;
     } 
     ret &= (~O_NONBLOCK); 
     if( fcntl(gs_socket, F_SETFL, ret) < 0) { 
-        printf("Error fcntl(..., F_SETFL) (%s)", strerror(errno)); 
+        LOG_ERROR("Error fcntl(..., F_SETFL) (%s)", strerror(errno)); 
         goto l_socket_cleanup;
     } 
   
     ret = recv(gs_socket, &temp, 1, 0);
     if(-1 == ret) {
-        printf("Error receiving initial data! %d", ret);
+        LOG_ERROR("Error receiving initial data! %d", ret);
         goto l_socket_cleanup;
     }
     
-    printf("Connected to controller, remote socket: %d", temp);
+    LOG_INFO("Connected to controller, remote socket: %d", temp);
     
     base = event_base_new();
     redisOptions options = {0};
@@ -411,12 +507,12 @@ l_start:
 
     gs_async_context = redisAsyncConnectWithOptions(&options);
     if (gs_async_context->err) {
-        printf("Error: %s", gs_async_context->errstr);
+        LOG_ERROR("Error: %s", gs_async_context->errstr);
         goto l_free_async_redis;
     }
 
     if(REDIS_OK != redisLibeventAttach(gs_async_context,base)) {
-        printf("Error: error redis libevent attach!");
+        LOG_ERROR("Error: error redis libevent attach!");
         goto l_free_async_redis;
     }
 
@@ -439,10 +535,10 @@ l_socket_cleanup:
     gs_socket = -1;
 
     if(!gs_exit) {    
-        printf("Subscriber execution failed retry!");
+        LOG_ERROR("Subscriber execution failed retry!");
         goto l_start;
     }
     
-    printf("exit!");
+    LOG_INFO("exit!");
     return 0;
 }
