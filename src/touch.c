@@ -4,213 +4,317 @@
 #include <signal.h>
 
 #include <hiredis.h>
-#include <async.h>
-#include <adapters/libevent.h>
+#include <errno.h>
 
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <sys/socket.h>
+#include <sys/time.h>
 
-#include <fcntl.h>
-
-#define SERV_IP                 "192.168.100.100"
-#define SERV_PORT               5002
+#include "log.h"
+#include "to_socket.h"
 
 #define REDIS_IP                "127.0.0.1"
 #define REDIS_PORT              6379
 
-#define REDIS_MESSAGE_TYPE      "pmessage"
-
 #define FLAG_KEY                "touch"
 #define EXIT_FLAG_VALUE         "exit"
+
+#define MSG_INTERVAL_MS         300
 
 static int gs_socket = -1;
 static redisContext *gs_sync_context = NULL;
 
 static int gs_exit = 0;
 
+/*
+ * When user input incorrect data, this service will
+ * exit immediately. And with this function, it can
+ * provide user a friendly hint for usage.
+ * 
+ * Parameters:
+ * int argc                 Number of input parameters, same function 
+ *                          with argc of main.
+ * char **argv              Actual input parameters, same function with
+ *                          argv of main.
+ * 
+ * Return value:
+ * There is no return value
+ * 
+ * Note: in this function we use printf not using log
+ * as it is necessary to ensure the hint is always 
+ * printed out without the loglevel configuration.
+ * 
+ */
 void print_usage(int argc, char **argv) {
+    if(0 >= argc) {
+        return;
+    }
     printf("Invalid input parameters!\n");
     printf("Usage: (<optional parameters>)\n");
-    printf("%s id controller_ip controller_port <redis_ip> <redis_port>\n");
+    printf("%s controller_ip controller_port <log level> <redis_ip> <redis_port>\n", argv[0]);
     printf("E.g.:\n");
-    printf("%s 1 192.168.100.100 5000 127.0.0.1 6379\n\n");
+    printf("%s 192.168.100.100 5000\n\n", argv[0]);
+    printf("%s 192.168.100.100 5000 debug\n\n", argv[0]);
+    printf("%s 192.168.100.100 5000 127.0.0.1 6379\n\n", argv[0]);
+    printf("%s 192.168.100.100 5000 debug 127.0.0.1 6379\n\n", argv[0]);
 }
 
-int main (int argc, char **argv) {
+/*
+ * Main entry of the service. It will first connect
+ * to touch controller, and then connect to redis
+ * through a sync connection. When received message
+ * from touch controller, the data will be sent to
+ * redis through the sync connectoin
+ * 
+ * Parameters:
+ * int argc                 Number of input parameters, same function 
+ *                          with argc of main.
+ * char **argv              Actual input parameters, same function with
+ *                          argv of main.
+ * 
+ * Return value:
+ * There is no return value
+ * 
+ * Note: in this function we use printf not using log
+ * as it is necessary to ensure the hint is always 
+ * printed out without the loglevel configuration.
+ * 
+ */
+ int main (int argc, char **argv) {
     
 l_start:
 #ifndef _WIN32
     signal(SIGPIPE, SIG_IGN);
 #endif
-    struct sockaddr_in serv_addr;
-    
-    struct timeval timeout = { 0, 100000};
-    
-    int ret;
+
     unsigned char temp = 0;
-    unsigned char cmd;
+    unsigned char cmd = 0;
     unsigned int  x = 0, y = 0;
     int buffer_state = 0;
     
-    fd_set myset;
-    int valopt; 
-    socklen_t lon; 
+    const char* serv_ip;
+    int serv_port = 0;
+    const char* redis_ip;
+    int redis_port = REDIS_PORT;
+    
+    struct timeval timeout = { 0, 100000 }; 
+    struct timeval last_time, cur_time;
+    gettimeofday(&last_time, NULL);
+    gettimeofday(&cur_time, NULL);
 
-    char* serv_ip;
-    char* redis_ip;
-    int serv_port, redis_port;
-    
-    if(argc < 4) {
-        print_usage(argc, argv);
-        return -1;
+    switch(argc) {
+        case 6:
+            if(0 > log_set_level(argv[3])) {
+                print_usage(argc, argv);
+                return -2;
+            }
+            redis_port = atoi(argv[5]);
+            redis_ip = argv[4];
+            serv_port = atoi(argv[2]);
+            serv_ip = argv[1];
+            break;
+        case 5:
+            redis_port = atoi(argv[4]);
+            redis_ip = argv[3];
+            serv_port = atoi(argv[2]);
+            serv_ip = argv[1];
+            break;
+        case 4:
+            if(0 > log_set_level(argv[3])) {
+                print_usage(argc, argv);
+                return -3;
+            }
+            serv_ip = argv[1];
+            serv_port = atoi(argv[2]);
+            redis_ip = REDIS_IP;
+            redis_port = REDIS_PORT;
+            break;
+        case 3:
+            serv_ip = argv[1];
+            serv_port = atoi(argv[2]);
+            redis_ip = REDIS_IP;
+            redis_port = REDIS_PORT;
+            break;
+        default:
+            print_usage(argc, argv);
+            return -1;
     }
-    
-    serv_ip = argv[2];
-    if(argc >= 5)
-        redis_ip = argv[4];
-    else
-        redis_ip = REDIS_IP;
         
-    serv_port = atoi(argv[3]);
-    if(argc >= 6)
-        redis_port = atoi(argv[5]);
-    else
-        redis_port = REDIS_PORT;
-    
-    memset(&serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(serv_port);
-    ret = inet_pton(AF_INET, serv_ip, &serv_addr.sin_addr.s_addr);
-    if(-1 == ret) {
-        printf("Error assigning address!\n");
+    gs_socket = to_connect(serv_ip, serv_port);
+    if(0 > gs_socket) {
+        LOG_ERROR("Error creating socket!");
         goto l_start;
     }
     
-    gs_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if(-1 == gs_socket) {
-        printf("Error connecting to controller!\n");
-        goto l_start;
-    }
-        
-    printf("Socket: %d!\n", gs_socket);
-    printf("Socket Family: %d\n", serv_addr.sin_family);
-    printf("Socket Port: %d\n", serv_addr.sin_port);
-    
-    ret = 1;
-    setsockopt(gs_socket, SOL_SOCKET, SO_KEEPALIVE, &ret, sizeof(ret));
-    
-    // Set non-blocking 
-    if( (ret = fcntl(gs_socket, F_GETFL, NULL)) < 0) { 
-        printf("Error fcntl(..., F_GETFL) (%s)\n", strerror(errno)); 
-        goto l_socket_cleanup;
-    } 
-    ret |= O_NONBLOCK; 
-    if( fcntl(gs_socket, F_SETFL, ret) < 0) { 
-        printf("Error fcntl(..., F_SETFL) (%s)\n", strerror(errno)); 
-        goto l_socket_cleanup;
-    } 
-    // Trying to connect with timeout 
-    ret = connect(gs_socket, (struct sockaddr *)&serv_addr, sizeof(serv_addr)); 
-    if (ret < 0) { 
-        if (EINPROGRESS == errno) { 
-            printf("EINPROGRESS in connect() - selecting\n"); 
-            do { 
-                FD_ZERO(&myset); 
-                FD_SET(gs_socket, &myset); 
-                ret = select(gs_socket+1, NULL, &myset, NULL, &timeout); 
-                if (ret < 0 && EINTR != errno) { 
-                    printf("Error connecting %d - %s\n", errno, strerror(errno)); 
-                    exit(0); 
-                } 
-                else if (ret > 0) { 
-                    // Socket selected for write 
-                    lon = sizeof(int); 
-                    if (getsockopt(gs_socket, SOL_SOCKET, SO_ERROR, (void*)(&valopt), &lon) < 0) { 
-                        printf("Error in getsockopt() %d - %s\n", errno, strerror(errno)); 
-                        goto l_socket_cleanup;
-                    } 
-                    // Check the value returned... 
-                    if (valopt) { 
-                        printf("Error in delayed connection() %d - %s\n", valopt, strerror(valopt)); 
-                        goto l_socket_cleanup;
-                    } 
-                    break; 
-                } 
-                else { 
-                    printf("Timeout in select() - Cancelling!\n"); 
-                    goto l_socket_cleanup;
-                } 
-            } while (1); 
-        } 
-        else { 
-            printf("Error connecting %d - %s\n", errno, strerror(errno)); 
-            goto l_socket_cleanup;
-        } 
-    } 
-    // Set to blocking mode again... 
-    if( (ret = fcntl(gs_socket, F_GETFL, NULL)) < 0) { 
-        printf("Error fcntl(..., F_GETFL) (%s)\n", strerror(errno)); 
-        goto l_socket_cleanup;
-    } 
-    ret &= (~O_NONBLOCK); 
-    if( fcntl(gs_socket, F_SETFL, ret) < 0) { 
-        printf("Error fcntl(..., F_SETFL) (%s)\n", strerror(errno)); 
-        goto l_socket_cleanup;
-    } 
 /*  
-    ret = recv(gs_socket, &temp, 1, 0);
-    if(-1 == ret) {
-        printf("Error receiving initial data! %d\n", ret);
+    if(0 > to_recv(gs_socket, &temp, 1, 0)) {
+        LOG_ERROR("Error receiving initial data! %d %s", ret, strerror(errno));
         goto l_socket_cleanup;
     }
-    printf("Connected to controller, remote socket: %d\n", temp);
+    LOG_INFO("Connected to controller, remote socket: %d", temp);
 */    
 
     gs_sync_context = redisConnectWithTimeout(redis_ip, redis_port, timeout);
     if(NULL == gs_sync_context) {
-        printf("Connection error: can't allocate redis context\n");
+        LOG_ERROR("Connection error: can't allocate redis context");
         goto l_socket_cleanup;
     }
     
     if(gs_sync_context->err) {
-        printf("Connection error: %s\n", gs_sync_context->errstr);
+        LOG_ERROR("Connection error: %s", gs_sync_context->errstr);
         goto l_free_redis;
     }
 
     redisReply* reply = redisCommand(gs_sync_context,"PING");
     if(NULL == reply) {
-        printf("Failed to sync query redis %s\n", gs_sync_context->errstr);
+        LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
         goto l_free_redis;
     }
-    printf("PING: %s\n", reply->str);
+    LOG_DEBUG("PING: %s", reply->str);
     freeReplyObject(reply);
     
-    printf("Start loop!\n");
+    LOG_INFO("Start loop!");
 
     do {
-        printf("Start Receiving\n");
-        if(-1 == recv(gs_socket, &temp, 1, 0)) {
-            goto l_free_redis;
-        } else { //
-            printf("Received 0x%x %d\n", temp, buffer_state);
-            switch(buffer_state) {
-                case 0: // first 0xB1/B2/B3
-                    if(0xB1 == temp || 0xB2 == temp) {
-                        cmd = temp;
-                        buffer_state++;
-                    } else if(0xB3 == temp) {
-                        cmd = temp;
-                        printf("PUBLISH %s/%s/cmd 0x%x %d %d\n", FLAG_KEY, argv[1], cmd, x, y);
-                        reply = redisCommand(gs_sync_context,"PUBLISH %s/%s/cmd %d/%d/%d", FLAG_KEY, argv[1], cmd, x, y);
+        LOG_DEBUG("Start Receiving");
+        if(-1 == to_recv(gs_socket, &temp, 1, 0)) {
+            LOG_DEBUG("Receive returned -1, %s", strerror(errno));
+            if(EAGAIN == errno || EWOULDBLOCK == errno) {
+                // receive timeout
+                // Send out pending MSG
+                if(0 != cmd) {
+                    LOG_DETAILS("Get time info");
+                    gettimeofday(&cur_time, NULL);
+                    if(((cur_time.tv_sec - last_time.tv_sec) * 1000 + 
+                        (cur_time.tv_usec - last_time.tv_usec) / 1000) > MSG_INTERVAL_MS) {
+                        // only send out when there is enough interval
+                        last_time.tv_sec = cur_time.tv_sec;
+                        last_time.tv_usec = cur_time.tv_usec;
+                        LOG_DETAILS("PUBLISH %s/%s/cmd 0x%x %d %d", FLAG_KEY, serv_ip, cmd, x, y);
+                        reply = redisCommand(gs_sync_context,"PUBLISH %s/%s/cmd %d/%d/%d", FLAG_KEY, serv_ip, cmd, x, y);
                         if(NULL == reply) {
-                            printf("Failed to sync query redis %s\n", gs_sync_context->errstr);
+                            LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
                             goto l_free_redis;
                         }
                         if(NULL != reply->str) {
-                            printf("%s\n", reply->str);
+                            LOG_DETAILS("%s", reply->str);
                         }
                         freeReplyObject(reply);
+                        
+                        // clear cmd
+                        cmd = 0;
+                    }
+                }
+                
+                // Check log level
+                LOG_DEBUG("Check log level")
+                reply = redisCommand(gs_sync_context,"GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
+                if(NULL == reply) {
+                    LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+                    goto l_free_redis;
+                }
+                LOG_DETAILS("Get log level returned")
+                if(NULL != reply->str) {
+                    LOG_DETAILS("%s", reply->str);
+                    if(0 > log_set_level(reply->str)) {
+                        LOG_ERROR("Invalid log option: %s", reply->str);
+                    }
+                }
+                
+                freeReplyObject(reply);
+
+                // Check exit flag
+                LOG_DEBUG("Check exit flag")
+                reply = redisCommand(gs_sync_context,"GET %s/%s", FLAG_KEY, serv_ip);
+                if(NULL == reply) {
+                    LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+                    goto l_free_redis;
+                }
+                if(NULL != reply->str) {
+                    LOG_DETAILS("%s", reply->str);
+                    if(0 == strcmp(EXIT_FLAG_VALUE, reply->str)) {
+                        gs_exit = 1;
+                        
+                        freeReplyObject(reply);
+                        
+                        // delete the flag ensure not find it next start
+                        reply = redisCommand(gs_sync_context,"DEL %s/%s", FLAG_KEY, serv_ip);
+                        if(NULL == reply) {
+                            LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+                            goto l_free_redis;
+                        }
+                        if(NULL != reply->str) {
+                            LOG_DETAILS("%s", reply->str);
+                        }
+                    }
+                }
+                
+                freeReplyObject(reply);
+            } else {
+                // other errors
+                LOG_ERROR("Error receive bytes %s", strerror(errno));
+                goto l_free_redis;
+            }
+        } else { //
+            LOG_DETAILS("Received 0x%x %d", temp, buffer_state);
+            switch(buffer_state) {
+                case 0: // first 0xB1/B2/B3
+                    if(0xB1 == temp) {
+                        switch(cmd) {
+                            case 0xB1:
+                                // this shouldn't happen as B3 should always come before B1.
+                                LOG_WARNING("Warning: invalid cmd state! 0x%x", cmd);
+                                break;
+                            case 0xB2: 
+                                // this shouldn't happen as B3 should always come before B1.
+                                LOG_WARNING("Warning: invalid cmd state! 0x%x", cmd);
+                                break;
+                            case 0xB3:
+                                // last msg haven't been sent out convert to move
+                                cmd = 0xB2;
+                                break;
+                            default: // last msg have been sent out, new click
+                                cmd = 0xB1;
+                                break;
+                        }
+                        buffer_state++;
+                    } else if(0xB2 == temp) {
+                        switch(cmd) {
+                            case 0xB1: // last msg haven't been sent out, keep click event
+                                break;
+                            case 0xB2: 
+                                // this shouldn't happen as B3 should always come before B1.
+                                LOG_WARNING("Warning: invalid cmd state! 0x%x", cmd);
+                                break;
+                            case 0xB3:
+                                // last msg haven't been sent out convert to move
+                                cmd = 0xB2;
+                                break;
+                            default: // last msg have been sent out, new click
+                                cmd = 0xB2;
+                                break;
+                        }
+                        buffer_state++;
+                    } else if(0xB3 == temp) {
+                        gettimeofday(&cur_time, NULL);
+                        if(((cur_time.tv_sec - last_time.tv_sec) * 1000 + 
+                            (cur_time.tv_usec - last_time.tv_usec) / 1000) > MSG_INTERVAL_MS) {
+                            // only send out when there is enough interval
+                            last_time.tv_sec = cur_time.tv_sec;
+                            last_time.tv_usec = cur_time.tv_usec;
+                            cmd = temp;
+                            LOG_DETAILS("PUBLISH %s/%s/cmd 0x%x %d %d", FLAG_KEY, serv_ip, cmd, x, y);
+                            reply = redisCommand(gs_sync_context,"PUBLISH %s/%s/cmd %d/%d/%d", FLAG_KEY, serv_ip, cmd, x, y);
+                            if(NULL == reply) {
+                                LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+                                goto l_free_redis;
+                            }
+                            if(NULL != reply->str) {
+                                LOG_DETAILS("%s", reply->str);
+                            }
+                            freeReplyObject(reply);
+                            
+                            // clear cmd
+                            cmd = 0;
+                        }
                     }
                     break;
                 case 1: // x1 
@@ -229,35 +333,45 @@ l_start:
                 case 4: // y2
                     y *= 256;
                     y += temp;
-                    // send out
-                    printf("PUBLISH %s/%s/cmd 0x%x %d %d\n", FLAG_KEY, argv[1], cmd, x, y);
-                    reply = redisCommand(gs_sync_context,"PUBLISH %s/%s/cmd %d/%d/%d", FLAG_KEY, argv[1], cmd, x, y);
-                    if(NULL == reply) {
-                        printf("Failed to sync query redis %s\n", gs_sync_context->errstr);
-                        goto l_free_redis;
+                    
+                    // this can be sure that not b3
+                    gettimeofday(&cur_time, NULL);
+                    if(((cur_time.tv_sec - last_time.tv_sec) * 1000 + 
+                        (cur_time.tv_usec - last_time.tv_usec) / 1000) > MSG_INTERVAL_MS) {
+                        // only send out when there is enough interval
+                        last_time.tv_sec = cur_time.tv_sec;
+                        last_time.tv_usec = cur_time.tv_usec;
+                        
+                        LOG_DETAILS("PUBLISH %s/%s/cmd 0x%x %d %d", FLAG_KEY, serv_ip, cmd, x, y);
+                        reply = redisCommand(gs_sync_context,"PUBLISH %s/%s/cmd %d/%d/%d", FLAG_KEY, serv_ip, cmd, x, y);
+                        if(NULL == reply) {
+                            LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+                            goto l_free_redis;
+                        }
+                        if(NULL != reply->str) {
+                            LOG_DETAILS("%s", reply->str);
+                        }
+                        freeReplyObject(reply);
                     }
-                    if(NULL != reply->str) {
-                        printf("%s\n", reply->str);
-                    }
-                    freeReplyObject(reply);
+
                     buffer_state = 0;
                     break;
             }
         }
-    } while(1);
+    } while(!gs_exit);
     
 l_free_redis:
     redisFree(gs_sync_context);
     
 l_socket_cleanup:
-    close(gs_socket);
+    to_close(gs_socket);
     gs_socket = -1;
 
     if(!gs_exit) {    
-        printf("Monitor execution failed retry!\n");
+        LOG_ERROR("Monitor execution failed retry!");
         goto l_start;
     }
     
-    printf("exit!\n");
+    LOG_INFO("exit!");
     return 0;
 }

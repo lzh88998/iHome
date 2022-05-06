@@ -60,13 +60,13 @@ to_socket_ctx to_connect(const char* addr, int port) {
     
     ret = inet_pton(AF_INET, addr, &target_addr.sin_addr.s_addr);
     if(-1 == ret) {
-        LOG_ERROR("Error assigning address!");
+        LOG_ERROR("Error assigning address! %s", strerror(errno));
         return TO_SOCKET_ERROR_ADDRESS;
     }
     
     socket_ctx = socket(AF_INET, SOCK_STREAM, 0);
     if(-1 == socket_ctx) {
-        LOG_ERROR("Error connecting to controller!");
+        LOG_ERROR("Error connecting to controller! %s",  strerror(errno));
         return TO_SOCKET_ERROR_PROTOCOL;
     }
         
@@ -148,14 +148,14 @@ to_socket_ctx to_connect(const char* addr, int port) {
     return socket_ctx;
 
 l_socket_disconnect:
-	if(0 > shutdown(socket_ctx, SHUT_RDWR)) {
-		LOG_ERROR("Error shutdown socket! Error no: %s", strerror(errno));
-	}
-  
+    if(0 > shutdown(socket_ctx, SHUT_RDWR)) {
+	    LOG_ERROR("Error shutdown socket! Error no: %s", strerror(errno));
+    }
+
 l_socket_cleanup:
-	if(0 > close(socket_ctx)) {
-		LOG_ERROR("Error closing socket! Error no: %s", strerror(errno));
-	}
-	
-	return ret;
+    if(0 > close(socket_ctx)) {
+	    LOG_ERROR("Error closing socket! Error no: %s", strerror(errno));
+    }
+    
+    return ret;
 }

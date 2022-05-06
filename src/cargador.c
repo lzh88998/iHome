@@ -132,10 +132,10 @@ int sendRecvCommand(long idx, const char* v) {
     LOG_DETAILS("Send receive index: %d Value: 0x%x", idx, status);
     status |= (idx & 31);
     
-    if(0 > send(gs_socket, &status, 1, 0)) {
+    if(0 > to_send(gs_socket, &status, 1, 0)) {
         LOG_ERROR("Send receive send command to controller failed! Error code: %s", strerror(errno));
         return CARGADOR_SND_RCV_ERROR;
-    } else if(0 > recv(gs_socket, &status, 1, 0)) {
+    } else if(0 > to_recv(gs_socket, &status, 1, 0)) {
         LOG_ERROR("Send receive receive result from controller failed! Error code: %s", strerror(errno));
         return CARGADOR_SND_RCV_ERROR;
     }
@@ -463,6 +463,10 @@ l_start:
     }
     
     gs_socket = to_connect(serv_ip, serv_port);
+    if(0 > gs_socket) {
+        LOG_ERROR("Error creating socket!");
+        goto l_start;
+    }
   
     ret = to_recv(gs_socket, &temp, 1, 0);
     if(0 > ret) {
@@ -503,7 +507,7 @@ l_free_async_redis:
     event_base_free(base);
     
 l_socket_cleanup:
-    close(gs_socket);
+    to_close(gs_socket);
     gs_socket = -1;
 
     if(!gs_exit) {    

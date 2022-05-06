@@ -13,6 +13,8 @@
 #ifndef __TO_SOCKET_H__
 #define __TO_SOCKET_H__
 
+#include <sys/socket.h>
+
 /*
  * Define return values of to_socket functions
  * in a more readable manner
