@@ -367,10 +367,13 @@ void print_usage(int argc, char **argv) {
     
     printf("Invalid input parameters!\r\n");
     printf("Usage: (<optional parameters>)\r\n");
-    printf("%s log_level controller_ip controller_port <redis_ip> <redis_port>\r\n", argv[0]);
+    printf("%s controller_ip controller_port <log_level> <redis_ip> <redis_port>\r\n", argv[0]);
     log_print_level_info();
     printf("E.g.:\r\n");
-    printf("%s debug 192.168.100.100 5000 127.0.0.1 6379\r\n", argv[0]);
+    printf("%s 192.168.100.100 5000\r\n", argv[0]);
+    printf("%s 192.168.100.100 5000 debug\r\n", argv[0]);
+    printf("%s 192.168.100.100 5000 127.0.0.1 6379\r\n", argv[0]);
+    printf("%s 192.168.100.100 5000 debug 127.0.0.1 6379\r\n", argv[0]);
 }
 
 /*
@@ -411,7 +414,7 @@ l_start:
     signal(SIGPIPE, SIG_IGN);
 #endif
     struct event_base *base;
-    struct timeval timeout = { 0, 100000}; 
+    struct timeval timeout = { 0, 100000 }; 
 
     int ret;
     unsigned char temp = 0;
@@ -422,28 +425,42 @@ l_start:
     
     LOG_INFO("===================Service start!===================");
     LOG_INFO("Parsing parameters!");
-    
-    if(argc < 4) {
-        print_usage(argc, argv);
-        return -1;
-    }
-    
-    if(0 > log_set_level(argv[1])) {
-        print_usage(argc, argv);
-        return -2;
-    }
-    
-    serv_ip = argv[2];
-    if(argc >= 5)
-        redis_ip = argv[4];
-    else
-        redis_ip = REDIS_IP;
         
-    serv_port = atoi(argv[3]);
-    if(argc >= 6)
-        redis_port = atoi(argv[5]);
-    else
-        redis_port = REDIS_PORT;
+    redis_ip = REDIS_IP;
+    redis_port = REDIS_PORT;
+    switch(argc) {
+        case 6:
+            if(0 > log_set_level(argv[3])) {
+                print_usage(argc, argv);
+                return -2;
+            }
+            redis_port = atoi(argv[5]);
+            redis_ip = argv[4];
+            serv_port = atoi(argv[2]);
+            serv_ip = argv[1];
+            break;
+        case 5:
+            redis_port = atoi(argv[4]);
+            redis_ip = argv[3];
+            serv_port = atoi(argv[2]);
+            serv_ip = argv[1];
+            break;
+        case 4:
+            if(0 > log_set_level(argv[3])) {
+                print_usage(argc, argv);
+                return -3;
+            }
+            serv_port = atoi(argv[2]);
+            serv_ip = argv[1];
+            break;
+        case 3:
+            serv_port = atoi(argv[2]);
+            serv_ip = argv[1];
+            break;
+        default:
+            print_usage(argc, argv);
+            return -1;
+    }
     
     gs_socket = to_connect(serv_ip, serv_port);
   
@@ -475,10 +492,10 @@ l_start:
     redisAsyncSetDisconnectCallback(gs_async_context,disconnectCallback);
 
     for(long i = 0; i < 32; i++) { // apply current status to controller
-        redisAsyncCommand(gs_async_context, getCallback, (void*)i, "GET %s/%s/%d", FLAG_KEY, argv[2], i);
+        redisAsyncCommand(gs_async_context, getCallback, (void*)i, "GET %s/%s/%d", FLAG_KEY, serv_ip, i);
     }
 
-    redisAsyncCommand(gs_async_context, subscribeCallback, argv[1], "PSUBSCRIBE %s/%s/*", FLAG_KEY, argv[2]);
+    redisAsyncCommand(gs_async_context, subscribeCallback, NULL, "PSUBSCRIBE %s/%s/*", FLAG_KEY, serv_ip);
     event_base_dispatch(base);
     
 l_free_async_redis:
