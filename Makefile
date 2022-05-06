@@ -40,9 +40,12 @@ $(COMMON_LIB):$(OBJ)
 
 cargador:src/cargador.c $(HIREDIS_LIB) $(COMMON_LIB)
 	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS)
+	
+godown_keeper:src/godown_keeper.c $(HIREDIS_LIB)
+	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS)
 
 clean:
-	rm -rf *.o *.a cargador
+	rm -rf *.o *.a cargador godown_keeper
 	rm -rf src/*.o
 
 dep:

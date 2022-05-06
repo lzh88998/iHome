@@ -185,7 +185,7 @@ void getCallback(redisAsyncContext *c, void *r, void *privdata) {
     LOG_DETAILS("Get param: %ld", (long)privdata);
     
     if(NULL != reply->str) {
-        if(0 >= sendRecvCommand((long)privdata, reply->str)) {
+        if(CARGADOR_SND_RCV_OK != sendRecvCommand((long)privdata, reply->str)) {
             redisAsyncDisconnect(c);
             return;
         }
@@ -264,7 +264,7 @@ void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
                             } else {
                                 int idx = atoi(idx_start);
                                 if(idx >= 0 && idx < MAX_OUTPUT_PIN_COUNT) {
-                                    if(0 > sendRecvCommand(idx, reply->element[3]->str)) {
+                                    if(CARGADOR_SND_RCV_OK != sendRecvCommand(idx, reply->element[3]->str)) {
                                         redisAsyncDisconnect(c);
                                     }
                                 } else {
@@ -490,7 +490,7 @@ l_socket_cleanup:
     gs_socket = -1;
 
     if(!gs_exit) {    
-        LOG_ERROR("Subscriber execution failed retry!");
+        LOG_ERROR("Execution failed retry!");
         goto l_start;
     }
     
