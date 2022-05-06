@@ -216,6 +216,18 @@ l_start:
                     LOG_DETAILS("%s", reply->str);
                     if(0 > log_set_level(reply->str)) {
                         LOG_ERROR("Invalid log option: %s", reply->str);
+                    } else {
+                        freeReplyObject(reply);
+
+                        // delete the flag ensure not find it next start
+                        reply = redisCommand(gs_sync_context,"DEL %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
+                        if(NULL == reply) {
+                            LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+                            goto l_free_redis;
+                        }
+                        if(NULL != reply->str) {
+                            LOG_DETAILS("%s", reply->str);
+                        }
                     }
                 }
                 
@@ -314,6 +326,8 @@ l_start:
                             
                             // clear cmd
                             cmd = 0;
+                        } else {
+                            cmd = 0xB3;
                         }
                     }
                     break;
@@ -352,6 +366,9 @@ l_start:
                             LOG_DETAILS("%s", reply->str);
                         }
                         freeReplyObject(reply);
+                        
+                        // clear cmd
+                        cmd = 0;
                     }
 
                     buffer_state = 0;

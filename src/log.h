@@ -10,7 +10,7 @@
 #define __LOG_H__
 
 #include <stdio.h>
-
+#include <unistd.h>
 /*
  * To ensure consistent experience of different
  * micro services, this value is defined in log.h but it is
