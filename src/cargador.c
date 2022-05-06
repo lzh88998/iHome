@@ -271,7 +271,7 @@ void connectCallback(const redisAsyncContext *c, int status) {
         printf("Error: %s", c->errstr);
         return;
     }
-    LOG_INFO("Connected...");
+    LOG_INFO("Connected to redis...");
 }
 
 /*
@@ -295,7 +295,7 @@ void disconnectCallback(const redisAsyncContext *c, int status) {
         printf("Error: %s", c->errstr);
         return;
     }
-    LOG_INFO("Disconnected...");
+    LOG_INFO("Disconnected from redis...");
 }
 
 /*
