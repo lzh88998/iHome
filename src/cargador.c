@@ -173,6 +173,7 @@ void getCallback(redisAsyncContext *c, void *r, void *privdata) {
     LOG_DEBUG("Get channel %ld callback!", (long)privdata);
     if (reply == NULL) {
         if (c->errstr) {
+            redisAsyncDisconnect(c);
             LOG_ERROR("Get errstr: %s", c->errstr);
         }
         return;
@@ -227,6 +228,7 @@ void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
     if (reply == NULL) {
         if (c->errstr) {
             LOG_ERROR("Subscribe errstr: %s", c->errstr);
+            redisAsyncDisconnect(c);
         }
         return;
     }
@@ -309,7 +311,7 @@ void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
  */
 void connectCallback(const redisAsyncContext *c, int status) {
     if (status != REDIS_OK) {
-        printf("Error: %s", c->errstr);
+        LOG_ERROR("Error: %s", c->errstr);
         return;
     }
     LOG_INFO("Connected to redis...");
@@ -333,7 +335,7 @@ void connectCallback(const redisAsyncContext *c, int status) {
  */
 void disconnectCallback(const redisAsyncContext *c, int status) {
     if (status != REDIS_OK) {
-        printf("Error: %s", c->errstr);
+        LOG_ERROR("Error: %s", c->errstr);
         return;
     }
     LOG_INFO("Disconnected from redis...");
