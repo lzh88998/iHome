@@ -66,14 +66,13 @@
  * 
  */
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
 
-#include <hiredis.h>
-#include <async.h>
-#include <adapters/libevent.h>
+#include "hiredis.h"
+#include "async.h"
+#include "adapters/libevent.h"
 
 #include <unistd.h>
 #include <arpa/inet.h>
