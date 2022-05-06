@@ -39,18 +39,18 @@ void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
     if (reply == NULL) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
             redisAsyncDisconnect(c);
         }
         return;
     }
     
-    LOG_DETAILS("sub reply type: %d\n", reply->type);
-    LOG_DETAILS("sub reply element count: %ld\n", reply->elements);
+    LOG_DETAILS("sub reply type: %d", reply->type);
+    LOG_DETAILS("sub reply element count: %ld", reply->elements);
     switch(reply->type) {
         case REDIS_REPLY_ARRAY: 
             for(size_t i = 0; i < reply->elements; i++) {
-                LOG_DETAILS("sub Array element %ld: %s\n", i, reply->element[i]->str);
+                LOG_DETAILS("sub Array element %ld: %s", i, reply->element[i]->str);
             }
             
             if(4 == reply->elements) { // psubscribe element 0 is "pmessage", element 1 is key pattern element 2 is key element 3 is value string
@@ -70,10 +70,10 @@ void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
                         if(NULL != reply->element[3] && NULL != reply->element[3]->str) {
                             redisReply* sync_reply = redisCommand(gs_sync_context,"SET %s %s", reply->element[2]->str, reply->element[3]->str);
                             if(NULL == sync_reply) {
-                                LOG_ERROR("Failed to set item in redis %s\n", gs_sync_context->errstr);
+                                LOG_ERROR("Failed to set item in redis %s", gs_sync_context->errstr);
                                 redisAsyncDisconnect(c);
                             } else {
-                                LOG_DETAILS("Set item in redis %s\n", sync_reply->str);
+                                LOG_DETAILS("Set item in redis %s", sync_reply->str);
                                 freeReplyObject(sync_reply);
                             }
                         }
@@ -85,33 +85,33 @@ void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
         case REDIS_REPLY_VERB:
         case REDIS_REPLY_STRING:
         case REDIS_REPLY_BIGNUM:
-            LOG_DETAILS("sub argv[%s]: %s\n", (char*)privdata, reply->str);
+            LOG_DETAILS("sub argv[%s]: %s", (char*)privdata, reply->str);
         break;
         case REDIS_REPLY_DOUBLE:
-            LOG_DETAILS("sub Double %lf\n", reply->dval);
+            LOG_DETAILS("sub Double %lf", reply->dval);
         break;
         case REDIS_REPLY_INTEGER:
-            LOG_DETAILS("sub Integer %lld\n", reply->integer);
+            LOG_DETAILS("sub Integer %lld", reply->integer);
         break;
         }
 
-    LOG_DEBUG("subscribe finished!\n");
+    LOG_DEBUG("subscribe finished!");
 }
 
 void connectCallback(const redisAsyncContext *c, int status) {
     if (status != REDIS_OK) {
-        LOG_ERROR("Error: %s\n", c->errstr);
+        LOG_ERROR("Error: %s", c->errstr);
         return;
     }
-    LOG_INFO("Connected...\n");
+    LOG_INFO("Connected...");
 }
 
 void disconnectCallback(const redisAsyncContext *c, int status) {
     if (status != REDIS_OK) {
-        LOG_ERROR("Error: %s\n", c->errstr);
+        LOG_ERROR("Error: %s", c->errstr);
         return;
     }
-    LOG_INFO("Disconnected...\n");
+    LOG_INFO("Disconnected...");
 }
 
 void print_usage(int argc, char **argv) {
@@ -157,21 +157,21 @@ l_start:
 
     gs_sync_context = redisConnectWithTimeout(redis_ip, redis_port, timeout);
     if(NULL == gs_sync_context) {
-        LOG_ERROR("Connection error: can't allocate redis context\n");
+        LOG_ERROR("Connection error: can't allocate redis context");
         goto l_exit;
     }
     
     if(gs_sync_context->err) {
-        LOG_ERROR("Connection error: %s\n", gs_sync_context->errstr);
+        LOG_ERROR("Connection error: %s", gs_sync_context->errstr);
         goto l_free_sync_redis;
     }
 
     redisReply* reply = redisCommand(gs_sync_context,"PING");
     if(NULL == reply) {
-        LOG_ERROR("Failed to sync query redis %s\n", gs_sync_context->errstr);
+        LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
         goto l_free_sync_redis;
     }
-    LOG_DEBUG("PING: %s\n", reply->str);
+    LOG_DEBUG("PING: %s", reply->str);
     freeReplyObject(reply);
     
     redisOptions options = {0};
@@ -180,12 +180,12 @@ l_start:
 
     gs_async_context = redisAsyncConnectWithOptions(&options);
     if (gs_async_context->err) {
-        LOG_ERROR("Error: %s\n", gs_async_context->errstr);
+        LOG_ERROR("Error: %s", gs_async_context->errstr);
         goto l_free_async_redis;
     }
 
     if(REDIS_OK != redisLibeventAttach(gs_async_context,base)) {
-        LOG_ERROR("Error: error redis libevent attach!\n");
+        LOG_ERROR("Error: error redis libevent attach!");
         goto l_free_async_redis;
     }
 
@@ -204,10 +204,10 @@ l_free_async_redis:
  
 l_exit:
     if(!gs_exit) {    
-        LOG_ERROR("Godown_keeper execution failed retry!\n");
+        LOG_ERROR("Godown_keeper execution failed retry!");
         goto l_start;
     }
 
-    LOG_INFO("exit!\n");
+    LOG_INFO("exit!");
     return 0;
 }
