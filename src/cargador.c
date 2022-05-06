@@ -208,7 +208,7 @@ void getCallback(redisAsyncContext *c, void *r, void *privdata) {
  *                          service use psubscribe to subscribe chagnes
  *                          from redis, so the reply item usually has
  *                          4 elements 1 is "pmessage", second is 
- *                          subscribe pattern, third is actual topic, 
+ *                          subscribe pattern, third is actual channel, 
  *                          fourth will contains the value.
  * void *privdata           The PIN index is passed in as a long integer
  *                          although this seems to be a pointer but will

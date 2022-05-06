@@ -35,6 +35,34 @@ static redisAsyncContext *gs_async_context = NULL;
 
 static int gs_exit = 0;
 
+/*
+ * After start phase, the godown_keeper will subscribe all 
+ * message channels to keep the data stored in redis kv 
+ * store. This will ensure that offline micro services
+ * will get latest information when back online.
+ * 
+ * This callback function will be called when there is new
+ * messages published to redis.
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ *                          Because when the service is started, the 
+ *                          service use psubscribe to subscribe chagnes
+ *                          from redis, so the reply item usually has
+ *                          4 elements 1 is "pmessage", second is 
+ *                          subscribe pattern, third is actual channel, 
+ *                          fourth will contains the value.
+ * void *privdata           not used
+ * 
+ * Return value:
+ * There is no return value
+ * 
+ * Note: When send/receive error occures, this service will terminate
+ * itself and restart, so when send/recv error occur, it will disconnect
+ * from redis and main function will restart trying to reconnect.
+ * 
+ */
 void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
     if (reply == NULL) {
@@ -98,6 +126,20 @@ void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
     LOG_DEBUG("subscribe finished!");
 }
 
+/*
+ * When successfully connected to redis or failed to connect to redis,
+ * this function will be called to update the status
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * int status               Status code for redis connection, REDIS_OK
+ *                          means successfully connected to redis server.
+ *                          Other code means failure;
+ * 
+ * Return value:
+ * There is no return value
+ * 
+ */
 void connectCallback(const redisAsyncContext *c, int status) {
     if (status != REDIS_OK) {
         LOG_ERROR("Error: %s", c->errstr);
@@ -106,6 +148,22 @@ void connectCallback(const redisAsyncContext *c, int status) {
     LOG_INFO("Connected...");
 }
 
+/*
+ * When exiting the program or there are anything goes wrong and 
+ * disconnect is called, this function is called and provide the
+ * disconnect result
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * int status               Status code for disconnect from redis, 
+ *                          REDIS_OK means successfully disconnected 
+ *                          from to redis server Other code means 
+ *                          failure;
+ * 
+ * Return value:
+ * There is no return value
+ * 
+ */
 void disconnectCallback(const redisAsyncContext *c, int status) {
     if (status != REDIS_OK) {
         LOG_ERROR("Error: %s", c->errstr);
@@ -114,6 +172,25 @@ void disconnectCallback(const redisAsyncContext *c, int status) {
     LOG_INFO("Disconnected...");
 }
 
+/*
+ * When user input incorrect data, this service will
+ * exit immediately. And with this function, it can
+ * provide user a friendly hint for usage.
+ * 
+ * Parameters:
+ * int argc                 Number of input parameters, same function 
+ *                          with argc of main.
+ * char **argv              Actual input parameters, same function with
+ *                          argv of main.
+ * 
+ * Return value:
+ * There is no return value
+ * 
+ * Note: in this function we use printf not using log
+ * as it is necessary to ensure the hint is always 
+ * printed out without the loglevel configuration.
+ * 
+ */
 void print_usage(int argc, char **argv) {
     if(0 >= argc) {
         return;
@@ -125,6 +202,34 @@ void print_usage(int argc, char **argv) {
     printf("%s 127.0.0.1 6379\n\n", argv[0]);
 }
 
+/*
+ * Main entry of the service. It will first connect
+ * to redis use a sync connection, and then use 
+ * another async connection as main thread to
+ * subscribe all channels.
+ * 
+ * When new messages are published to any channel
+ * the subscribeCallback is called. And it will
+ * first check whether this message is related
+ * with godown_keeper exit or log level config
+ * if neither of above items, then use the sync
+ * connection to store the value to kv store of
+ * redis.
+ * 
+ * Parameters:
+ * int argc                 Number of input parameters, same function 
+ *                          with argc of main.
+ * char **argv              Actual input parameters, same function with
+ *                          argv of main.
+ * 
+ * Return value:
+ * There is no return value
+ * 
+ * Note: in this function we use printf not using log
+ * as it is necessary to ensure the hint is always 
+ * printed out without the loglevel configuration.
+ * 
+ */
 int main (int argc, char **argv) {
     
 l_start:
@@ -192,7 +297,7 @@ l_start:
     redisAsyncSetConnectCallback(gs_async_context,connectCallback);
     redisAsyncSetDisconnectCallback(gs_async_context,disconnectCallback);
 
-    redisAsyncCommand(gs_async_context, subscribeCallback, argv[1], "PSUBSCRIBE *");
+    redisAsyncCommand(gs_async_context, subscribeCallback, NULL, "PSUBSCRIBE *");
     event_base_dispatch(base);
     
 l_free_sync_redis:
