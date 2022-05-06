@@ -90,9 +90,56 @@
 #define FLAG_KEY                "cargador"
 #define EXIT_FLAG_VALUE         "exit"
 
+#define MAX_OUTPUT_PIN_COUNT    32
+
+#define TRUE                    1
+#define FALSE                   0
+
 static redisAsyncContext *gs_async_context = NULL;
 static int gs_socket = -1;
 static int gs_exit = 0;
+
+/*
+ * Send the command to controller and receive feedback
+ * internal check the idx range to ensure no out of
+ * bound message is sent to controller
+ * 
+ * Parameters:
+ * long idx                 index of output PIN
+ * char* v                  "0" means off other values
+ *                          means on
+ * 
+ * Return value:            -1 means failed to send or
+ *                          receive. 0 means OK
+ * 
+ * Note: when -1 is returned, outer program code need
+ * to deal with socket close and reinitialization as
+ * this usually caused by socket failure.
+ * 
+ */
+int sendRecvCommand(long idx, const char* v) {
+    unsigned char status;
+    if(idx >= MAX_OUTPUT_PIN_COUNT)
+        return -1;
+        
+    status = (0 != strcmp("0", v) ? 0x00 : 0x20);
+    
+    LOG_DETAILS("Subscribe Index: %d Value: 0x%x", idx, status);
+    status |= (idx & 31);
+    
+    if(-1 == send(gs_socket, &status, 1, 0)) {
+        LOG_ERROR("Subscribe send command to controller failed!");
+        return -1;
+    } else if(-1 == recv(gs_socket, &status, 1, 0)) {
+        LOG_ERROR("Subscribe receive result from controller failed!");
+        return -1;
+    }
+    else {
+        LOG_DETAILS("Subscribe received: 0x%x", status);
+    }
+    
+    return 0;
+}
 
 /*
  * During start phase, the cargador will get expected
@@ -118,7 +165,6 @@ static int gs_exit = 0;
  */
 void getCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
-    char temp;
     LOG_DEBUG("Get channel %ld callback!", (long)privdata);
     if (reply == NULL) {
         if (c->errstr) {
@@ -133,19 +179,9 @@ void getCallback(redisAsyncContext *c, void *r, void *privdata) {
     LOG_DETAILS("Get param: %ld", (long)privdata);
     
     if(NULL != reply->str) {
-        temp = (0 != strcmp("0", reply->str) ? 0x00 : 0x20) | ((long)privdata & 31);
-        if(-1 == send(gs_socket, &temp, 1, 0)) {
-            LOG_ERROR("Get send command to controller failed!");
+        if(0 >= sendRecvCommand((long)privdata, reply->str)) {
             redisAsyncDisconnect(c);
             return;
-        }
-        
-        if(-1 == recv(gs_socket, &temp, 1, 0)) {
-            LOG_ERROR("Get receive result from controller failed!");
-            redisAsyncDisconnect(c);
-        }
-        else {
-            LOG_DETAILS("Get received: 0x%x", temp);
         }
     }
     LOG_DEBUG("Get channel %ld callback finished!", (long)privdata);
@@ -199,33 +235,33 @@ void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
             }
             
             if(4 == reply->elements) { 
-                // subscribe element 0 is "message", element 1 is key pattern element 2 is key element 3 is value string
+                // subscribe element 0 is "pmessage", element 1 is key pattern element 2 is key element 3 is value string
                 if(NULL != reply->element[0] && NULL != reply->element[0]->str && 0 == strcmp(REDIS_MESSAGE_TYPE, reply->element[0]->str)) {
-                    if(NULL != reply->element[2] && NULL != reply->element[3]) {
-                        unsigned char status;
+                    if(NULL != reply->element[2] && NULL != reply->element[2]->str && NULL != reply->element[3] && NULL != reply->element[3]->str) {
                         char *idx_start = strrchr(reply->element[2]->str, '/');
                         if(NULL != idx_start) {
                             ++idx_start; // move to next pos;
                             if(0 == strcmp(EXIT_FLAG_VALUE, idx_start)) { // exit
-                                LOG_DETAILS("Subscribe exit flag found!");
-                                gs_exit = 1;
-                                redisAsyncDisconnect(c);
-                            } else {
-                                int idx = atoi(++idx_start);
-                                status = (0 != strcmp("0", reply->element[3]->str) ? 0x00 : 0x20);
-                                
-                                LOG_DETAILS("Subscribe Index: %d Value: 0x%x", idx, status);
-                                status |= (idx & 31);
-                                
-                                if(-1 == send(gs_socket, &status, 1, 0)) {
-                                    LOG_ERROR("Subscribe send command to controller failed!");
+                                if(0 != strcmp("0", reply->element[3]->str)) {
+                                    LOG_DETAILS("Subscribe exit flag found!");
+                                    gs_exit = 1;
                                     redisAsyncDisconnect(c);
-                                } else if(-1 == recv(gs_socket, &status, 1, 0)) {
-                                    LOG_ERROR("Subscribe receive result from controller failed!");
-                                    redisAsyncDisconnect(c);
+                                } else {
+                                    LOG_WARNING("Subscribe warning: Exit flag received iwht value %s!", reply->element[3]->str);
                                 }
-                                else {
-                                    LOG_DETAILS("Subscribe received: 0x%x", status);
+                            } else if(0 == strcmp(LOG_LEVEL_FLAG_VALUE, idx_start)) {
+                                LOG_DETAILS("Subscribe log level flag found!");
+                                if(0 > log_set_level(reply->element[3]->str)) {
+                                    LOG_ERROR("Invalid log option: %s", reply->element[3]->str);
+                                }
+                            } else {
+                                int idx = atoi(idx_start);
+                                if(idx >= 0 && idx < MAX_OUTPUT_PIN_COUNT) {
+                                    if(0 > sendRecvCommand(idx, reply->element[3]->str)) {
+                                        redisAsyncDisconnect(c);
+                                    }
+                                } else {
+                                    LOG_WARNING("Subscribe warning: Invalid input index %d!", idx);
                                 }
                             }
                         } else {
@@ -520,10 +556,10 @@ l_start:
     redisAsyncSetDisconnectCallback(gs_async_context,disconnectCallback);
 
     for(long i = 0; i < 32; i++) { // apply current status to controller
-        redisAsyncCommand(gs_async_context, getCallback, (void*)i, "GET %s/%s/%d", FLAG_KEY, argv[1], i);
+        redisAsyncCommand(gs_async_context, getCallback, (void*)i, "GET %s/%s/%d", FLAG_KEY, argv[2], i);
     }
 
-    redisAsyncCommand(gs_async_context, subscribeCallback, argv[1], "PSUBSCRIBE %s/%s/*", FLAG_KEY, argv[1]);
+    redisAsyncCommand(gs_async_context, subscribeCallback, argv[1], "PSUBSCRIBE %s/%s/*", FLAG_KEY, argv[2]);
     event_base_dispatch(base);
     
 l_free_async_redis:

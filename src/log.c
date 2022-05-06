@@ -2,18 +2,6 @@
 #include <string.h>
 #include "log.h"
 
-#define LOG_LEVEL_ERROR_NAME		"error"
-#define LOG_LEVEL_ERROR_WARNING		"warning"
-#define LOG_LEVEL_ERROR_INFO		"info"
-#define LOG_LEVEL_ERROR_DEBUG		"debug"
-#define LOG_LEVEL_ERROR_DETAILS		"details"
-
-#define LOG_LEVEL_ERROR				0
-#define LOG_LEVEL_WARNING			1
-#define LOG_LEVEL_INFO				2
-#define LOG_LEVEL_DEBUG				3
-#define LOG_LEVEL_DETAILES			4
-
 static int gs_log_level = LOG_LEVEL_ERROR;
 int log_set_level(const char* level) {
     if(0 == strcmp(LOG_LEVEL_ERROR_NAME, level))
