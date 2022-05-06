@@ -1,7 +1,18 @@
+/*
+ * Copyright lzh88998 and distributed under Apache 2.0 license
+ * 
+ * Log level flag is used in subscribtion for changing log
+ * levels.
+ * 
+ */
+
 #include <stdarg.h>
 #include <string.h>
 #include "log.h"
 
+/*
+ * Global static variable to save current log level
+ */
 static int gs_log_level = LOG_LEVEL_ERROR;
 
 /*

@@ -1,11 +1,18 @@
+/*
+ * Copyright lzh88998 and distributed under Apache 2.0 license
+ * 
+ * Log level flag is used in subscribtion for changing log
+ * levels. 
+ * 
+ */
+ 
 #ifndef __LOG_H__
 #define __LOG_H__
 
 #include <stdio.h>
 
 /*
- * Log level flag is used in subscribtion for changing log
- * levels. And to ensure consistent experience of different
+ * To ensure consistent experience of different
  * micro services, this value is defined in log.h but it is
  * not used in log.c
  */

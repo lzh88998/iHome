@@ -1,3 +1,15 @@
+/*
+ * Copyright lzh88998 and distributed under Apache 2.0 license
+ * 
+ * to_socket is an extension to standard socket application.
+ * Added timeout control to connect, send and recv. 
+ * 
+ * Current default timeout is 100ms which is suitable for 
+ * intranet use especially when all devices are in the same
+ * subnet.
+ * 
+ */
+ 
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
@@ -13,6 +25,24 @@
 #include "log.h"
 #include "to_socket.h"
 
+
+/*
+ * Initiatelize a socket descriptor with timeout configuration
+ * specified for local network response time
+ * 
+ * Parameters:
+ * const char* addr		IP address in character format. E.g.: 
+ * 						"192.168.100.100"
+ * int port				Port number for target address
+ * 
+ * Return Value:		Socket descriptor if successful which
+ * 						will be greater than 0. Otherwiese 
+ * 						return error code defined in above 
+ * 						section.
+ * 
+ * Note current timeout is set to 100ms.
+ */
+ 
 to_socket_ctx to_connect(const char* addr, int port) {
     // for 100ms
     struct timeval timeout = { 0, 100000}; 

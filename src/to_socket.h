@@ -1,3 +1,15 @@
+/*
+ * Copyright lzh88998 and distributed under Apache 2.0 license
+ * 
+ * to_socket is an extension to standard socket application.
+ * Added timeout control to connect, send and recv. 
+ * 
+ * Current default timeout is 100ms which is suitable for 
+ * intranet use especially when all devices are in the same
+ * subnet.
+ * 
+ */
+ 
 #ifndef __TO_SOCKET_H__
 #define __TO_SOCKET_H__
 
