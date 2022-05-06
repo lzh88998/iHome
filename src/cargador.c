@@ -81,6 +81,7 @@
 #include <fcntl.h>
 
 #include "log.h"
+#include "to_socket.h"
 
 #define REDIS_IP                "127.0.0.1"
 #define REDIS_PORT              6379
@@ -95,8 +96,11 @@
 #define FALSE                   0
 
 static redisAsyncContext *gs_async_context = NULL;
-static int gs_socket = -1;
+static to_socket_ctx gs_socket = -1;
 static int gs_exit = 0;
+
+#define CARGADOR_SND_RCV_ERROR      -1
+#define CARGADOR_SND_RCV_OK         0
 
 /*
  * Send the command to controller and receive feedback
@@ -118,26 +122,28 @@ static int gs_exit = 0;
  */
 int sendRecvCommand(long idx, const char* v) {
     unsigned char status;
-    if(idx >= MAX_OUTPUT_PIN_COUNT)
-        return -1;
+    if(idx >= MAX_OUTPUT_PIN_COUNT) {
+        LOG_WARNING("Send receive warning, index %ld out of bound!", idx);
+        return CARGADOR_SND_RCV_OK;
+    }
         
     status = (0 != strcmp("0", v) ? 0x00 : 0x20);
     
-    LOG_DETAILS("Subscribe Index: %d Value: 0x%x", idx, status);
+    LOG_DETAILS("Send receive index: %d Value: 0x%x", idx, status);
     status |= (idx & 31);
     
-    if(-1 == send(gs_socket, &status, 1, 0)) {
-        LOG_ERROR("Subscribe send command to controller failed!");
-        return -1;
-    } else if(-1 == recv(gs_socket, &status, 1, 0)) {
-        LOG_ERROR("Subscribe receive result from controller failed!");
-        return -1;
+    if(0 > send(gs_socket, &status, 1, 0)) {
+        LOG_ERROR("Send receive send command to controller failed! Error code: %s", strerror(errno));
+        return CARGADOR_SND_RCV_ERROR;
+    } else if(0 > recv(gs_socket, &status, 1, 0)) {
+        LOG_ERROR("Send receive receive result from controller failed! Error code: %s", strerror(errno));
+        return CARGADOR_SND_RCV_ERROR;
     }
     else {
-        LOG_DETAILS("Subscribe received: 0x%x", status);
+        LOG_DETAILS("Send receive received: 0x%x", status);
     }
     
-    return 0;
+    return CARGADOR_SND_RCV_OK;
 }
 
 /*
@@ -403,17 +409,11 @@ l_start:
     signal(SIGPIPE, SIG_IGN);
 #endif
     struct event_base *base;
-    struct sockaddr_in serv_addr;
-    
-    struct timeval timeout = { 0, 100000};
-    
+    struct timeval timeout = { 0, 100000}; 
+
     int ret;
     unsigned char temp = 0;
     
-    fd_set myset;
-    int valopt; 
-    socklen_t lon; 
-
     const char* serv_ip;
     const char* redis_ip;
     int serv_port, redis_port;
@@ -443,93 +443,11 @@ l_start:
     else
         redis_port = REDIS_PORT;
     
-    memset(&serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(serv_port);
-    ret = inet_pton(AF_INET, serv_ip, &serv_addr.sin_addr.s_addr);
-    if(-1 == ret) {
-        LOG_ERROR("Error assigning address!");
-        goto l_start;
-    }
-    
-    gs_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if(-1 == gs_socket) {
-        LOG_ERROR("Error connecting to controller!");
-        goto l_start;
-    }
-        
-    LOG_DETAILS("Socket: %d!", gs_socket);
-    LOG_DETAILS("Socket Family: %d", serv_addr.sin_family);
-    LOG_DETAILS("Socket Port: %d", serv_addr.sin_port);
-    
-    setsockopt(gs_socket, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(struct timeval));
-    setsockopt(gs_socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(struct timeval));
-    
-    ret = 1;
-    setsockopt(gs_socket, SOL_SOCKET, SO_KEEPALIVE, &ret, sizeof(ret));
-    
-    // Set non-blocking 
-    if( (ret = fcntl(gs_socket, F_GETFL, NULL)) < 0) { 
-        LOG_ERROR("Error fcntl(..., F_GETFL) (%s)", strerror(errno)); 
-        goto l_socket_cleanup;
-    } 
-    ret |= O_NONBLOCK; 
-    if( fcntl(gs_socket, F_SETFL, ret) < 0) { 
-        LOG_ERROR("Error fcntl(..., F_SETFL) (%s)", strerror(errno)); 
-        goto l_socket_cleanup;
-    } 
-    // Trying to connect with timeout 
-    ret = connect(gs_socket, (struct sockaddr *)&serv_addr, sizeof(serv_addr)); 
-    if (ret < 0) { 
-        if (EINPROGRESS == errno) { 
-            LOG_DEBUG("EINPROGRESS in connect() - selecting"); 
-            do { 
-                FD_ZERO(&myset); 
-                FD_SET(gs_socket, &myset); 
-                ret = select(gs_socket+1, NULL, &myset, NULL, &timeout); 
-                if (ret < 0 && EINTR != errno) { 
-                    LOG_ERROR("Error connecting %d - %s", errno, strerror(errno)); 
-                    exit(0); 
-                } 
-                else if (ret > 0) { 
-                    // Socket selected for write 
-                    lon = sizeof(int); 
-                    if (getsockopt(gs_socket, SOL_SOCKET, SO_ERROR, (void*)(&valopt), &lon) < 0) { 
-                        LOG_ERROR("Error in getsockopt() %d - %s", errno, strerror(errno)); 
-                        goto l_socket_cleanup;
-                    } 
-                    // Check the value returned... 
-                    if (valopt) { 
-                        LOG_ERROR("Error in delayed connection() %d - %s", valopt, strerror(valopt)); 
-                        goto l_socket_cleanup;
-                    } 
-                    break; 
-                } 
-                else { 
-                    LOG_ERROR("Timeout in select() - Cancelling!"); 
-                    goto l_socket_cleanup;
-                } 
-            } while (1); 
-        } 
-        else { 
-            LOG_ERROR("Error connecting %d - %s", errno, strerror(errno)); 
-            goto l_socket_cleanup;
-        } 
-    } 
-    // Set to blocking mode again... 
-    if( (ret = fcntl(gs_socket, F_GETFL, NULL)) < 0) { 
-        LOG_ERROR("Error fcntl(..., F_GETFL) (%s)", strerror(errno)); 
-        goto l_socket_cleanup;
-    } 
-    ret &= (~O_NONBLOCK); 
-    if( fcntl(gs_socket, F_SETFL, ret) < 0) { 
-        LOG_ERROR("Error fcntl(..., F_SETFL) (%s)", strerror(errno)); 
-        goto l_socket_cleanup;
-    } 
+    gs_socket = to_connect(serv_ip, serv_port);
   
-    ret = recv(gs_socket, &temp, 1, 0);
-    if(-1 == ret) {
-        LOG_ERROR("Error receiving initial data! %d", ret);
+    ret = to_recv(gs_socket, &temp, 1, 0);
+    if(0 > ret) {
+        LOG_ERROR("Error receiving initial data! Error code: %s", strerror(errno));
         goto l_socket_cleanup;
     }
     

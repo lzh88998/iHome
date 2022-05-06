@@ -1,5 +1,5 @@
 TARGET=
-OBJ=log.o
+OBJ=log.o to_socket.o
 
 STLIB_MAKE_CMD=$(AR) rcs
 # DYLIB_MAKE_CMD=$(CC) -shared -Wl,-soname,log.so
@@ -8,9 +8,9 @@ ROOT_DIR=.
 HIREDIS_LIB=$(ROOT_DIR)/3rd/hiredis/libhiredis.a
 HIREDIS_INCLUDE=$(ROOT_DIR)/3rd/hiredis
 
-LOG_LIB=liblog.a
+COMMON_LIB=lib_ihome_common.a
 
-LDFLAGS=-Wl,$(HIREDIS_LIB),$(LOG_LIB)
+LDFLAGS=-Wl,$(HIREDIS_LIB),$(COMMON_LIB)
 
 # Fallback to gcc when $CC is not in $PATH.
 CC:=$(shell sh -c 'type $${CC%% *} >/dev/null 2>/dev/null && echo $(CC) || echo gcc')
@@ -23,28 +23,22 @@ REAL_LDFLAGS=$(LDFLAGS)
 
 all: $(TARGET)
 
-LCD.o: src/LCD.c
-cargador.o: src/cargador.c src/log.h
-godown_keeper.o: src/godown_keeper.c
 log.o: src/log.c src/log.h
 	$(CC) -std=c99 -c $(REAL_CFLAGS) $<
 	
-monitor.o: src/monitor.c
-sw_controller.o: src/sw_controller.c
-test.o: src/test.c
-test2.o: src/test2.c
-touch.o: src/touch.c
-touch_processor.o: src/touch_processor.c
+to_socket.o: src/to_socket.c src/to_socket.h
+	$(CC) -std=c99 -c $(REAL_CFLAGS) $<
+
 
 # Binaries:
-hiredis:$(ROOT_DIR)/3rd/hiredis/
+$(HIREDIS_LIB):$(ROOT_DIR)/3rd/hiredis/
 	git submodule update --init --recursive
 	$(MAKE) -C $(ROOT_DIR)/3rd/hiredis/
 
-$(LOG_LIB):$(OBJ)
-	$(STLIB_MAKE_CMD) $(LOG_LIB) $(OBJ)
+$(COMMON_LIB):$(OBJ)
+	$(STLIB_MAKE_CMD) $(COMMON_LIB) $(OBJ)
 
-cargador:src/cargador.c $(HIREDIS_LIB) $(LOG_LIB)
+cargador:src/cargador.c $(HIREDIS_LIB) $(COMMON_LIB)
 	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS)
 
 clean:
