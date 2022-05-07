@@ -119,7 +119,7 @@ static int gs_exit = 0;
  * 
  */
 int convert_encoding(void) {
-    LOG_DEBUG("Start convert\n");
+    LOG_DEBUG("Start convert");
     if(NULL == conv) {
         conv = iconv_open ("gb2312", "utf-8");
     }
@@ -134,12 +134,12 @@ int convert_encoding(void) {
     size_t in_size = strlen(ci);
     size_t out_size = 1024;
     
-    LOG_DETAILS("Input: %s\n", ci);
+    LOG_DETAILS("Input: %s", ci);
     
     size_t r = iconv (conv, &ci, &in_size, &co, &out_size);
     
-    LOG_DETAILS("iConv ret: %d\n", r);
-    LOG_DETAILS("iConv out_size: %d\n", out_size);
+    LOG_DETAILS("iConv ret: %d", r);
+    LOG_DETAILS("iConv out_size: %d", out_size);
     return 1024 - out_size + 1;
 }
 
@@ -160,7 +160,7 @@ int convert_encoding(void) {
  * unsigned int color               font color, common values
  *                                  are defined in the beginning
  *                                  of this file
- * 
+ * d
  * unsigned char font_size          font size in pixel, 
  *                                  common font sizes are 24 
  *                                  32 etc.
@@ -181,11 +181,11 @@ int draw_string(unsigned int x_start, unsigned int y_start, unsigned int x_end, 
     int converted_cnt = 0;
     va_list ap;
     va_start(ap, fmt);
-    LOG_DETAILS("Print\n");
+    LOG_DETAILS("Print");
     ret = vsprintf(input_buffer, fmt, ap);
     va_end(ap);
     
-    LOG_DETAILS("Convert %s\n", input_buffer);
+    LOG_DETAILS("Convert %s", input_buffer);
     converted_cnt = convert_encoding();
     
     input_buffer[0] = 0x63; //cmd
@@ -204,21 +204,21 @@ int draw_string(unsigned int x_start, unsigned int y_start, unsigned int x_end, 
     memcpy(input_buffer+12, output_buffer, converted_cnt);
 
     input_buffer[converted_cnt + 11] = '\0';
-    LOG_DETAILS("send %d bytes: %s\n", converted_cnt, input_buffer+12);
+    LOG_DETAILS("send %d bytes: %s", converted_cnt, input_buffer+12);
     
     ret = to_send(gs_socket, input_buffer, converted_cnt + 12, 0);
     if(0 > ret) {
-        LOG_ERROR("Drawstring send error: %s\n", strerror(errno));
+        LOG_ERROR("Drawstring send error: %s", strerror(errno));
         return ret;
     }
     
-    LOG_DETAILS("Send result: %d\n", ret);
+    LOG_DETAILS("Send result: %d", ret);
 
     ret = to_recv(gs_socket, input_buffer, 1, 0);
-    LOG_DETAILS("Received: %d 0x%x\n", ret, input_buffer[0]);
+    LOG_DETAILS("Received: %d 0x%x", ret, input_buffer[0]);
     
     if(0 > ret) {
-        LOG_ERROR("Drawstring receive error: %s\n", strerror(errno));
+        LOG_ERROR("Drawstring receive error: %s", strerror(errno));
     }
     
     return ret;
@@ -249,6 +249,7 @@ int draw_string(unsigned int x_start, unsigned int y_start, unsigned int x_end, 
  */
  int draw_rectangle(unsigned int x_start, unsigned int y_start, unsigned int x_end, unsigned int y_end, unsigned int color) {
     int ret = SND_RCV_OK;
+    unsigned char retry = 0;
     unsigned char bytes[11];
     
     bytes[0] = 0x62; //cmd
@@ -263,14 +264,19 @@ int draw_string(unsigned int x_start, unsigned int y_start, unsigned int x_end, 
     bytes[9] = ((color >> 8) & 0xFF);
     bytes[10] = (color & 0xFF);
     
-    LOG_DEBUG("Draw Rectangle send!\n");
+    LOG_DEBUG("Draw Rectangle send!");
     ret = to_send(gs_socket, bytes, 11, 0);
     if(0 > ret) {
         return ret;
     }
     
-    ret = to_recv(gs_socket, bytes, 1, 0);
-    LOG_DETAILS("Draw Rectangle received %d 0x%x!\n", ret, bytes[0]);
+    do
+    {
+        retry++;
+        ret = to_recv(gs_socket, bytes, 1, 0);
+    }
+    while(0 > ret && (EAGAIN == errno || EWOULDBLOCK == errno) && retry < 5);
+    LOG_DETAILS("Draw Rectangle received %d 0x%x!", ret, bytes[0]);
     
     return ret;
 }
@@ -353,7 +359,7 @@ void drawSensor1NameCallback(redisAsyncContext *c, void *r, void *privdata) {
     
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -409,7 +415,7 @@ void drawSensor2NameCallback(redisAsyncContext *c, void *r, void *privdata) {
     
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -465,7 +471,7 @@ void drawSensor3NameCallback(redisAsyncContext *c, void *r, void *privdata) {
     
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -521,7 +527,7 @@ void drawSensor4NameCallback(redisAsyncContext *c, void *r, void *privdata) {
     
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -577,7 +583,7 @@ void drawSensor1Callback(redisAsyncContext *c, void *r, void *privdata) {
     
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -633,7 +639,7 @@ void drawSensor2Callback(redisAsyncContext *c, void *r, void *privdata) {
     
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -689,7 +695,7 @@ void drawSensor3Callback(redisAsyncContext *c, void *r, void *privdata) {
     
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -745,7 +751,7 @@ void drawSensor4Callback(redisAsyncContext *c, void *r, void *privdata) {
     
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -795,13 +801,13 @@ void drawSW1NameCallback(redisAsyncContext *c, void *r, void *privdata) {
 
     x_start = 91;
     y_start = 31;
-    x_end = 163;
+    x_end = 162;
     y_end = 64;
     font_size = 32;
     
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -851,13 +857,13 @@ void drawSW2NameCallback(redisAsyncContext *c, void *r, void *privdata) {
 
     x_start = 171;
     y_start = 31;
-    x_end = 241;
+    x_end = 240;
     y_end = 64;
     font_size = 32;
     
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -913,7 +919,7 @@ void drawSW3NameCallback(redisAsyncContext *c, void *r, void *privdata) {
     
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -963,13 +969,13 @@ void drawSW4NameCallback(redisAsyncContext *c, void *r, void *privdata) {
 
     x_start = 91;
     y_start = 152;
-    x_end = 163;
+    x_end = 162;
     y_end = 185;
     font_size = 32;
     
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -1019,13 +1025,13 @@ void drawSW5NameCallback(redisAsyncContext *c, void *r, void *privdata) {
 
     x_start = 171;
     y_start = 152;
-    x_end = 241;
+    x_end = 240;
     y_end = 185;
     font_size = 32;
     
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -1081,7 +1087,7 @@ void drawSW6NameCallback(redisAsyncContext *c, void *r, void *privdata) {
     
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -1130,7 +1136,7 @@ void drawSW1StatusCallback(redisAsyncContext *c, void *r, void *privdata) {
 
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -1191,7 +1197,7 @@ void drawSW2StatusCallback(redisAsyncContext *c, void *r, void *privdata) {
 
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -1252,7 +1258,7 @@ void drawSW3StatusCallback(redisAsyncContext *c, void *r, void *privdata) {
 
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -1313,7 +1319,7 @@ void drawSW4StatusCallback(redisAsyncContext *c, void *r, void *privdata) {
 
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -1339,7 +1345,7 @@ void drawSW4StatusCallback(redisAsyncContext *c, void *r, void *privdata) {
         ch = "开";
     }
     
-    if(0 > draw_rectangle(107, 190, 298, 207, COLOR_BLUE)) {
+    if(0 > draw_rectangle(107, 190, 140, 207, COLOR_BLUE)) {
         LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
         redisAsyncDisconnect(c);
         return;
@@ -1374,7 +1380,7 @@ void drawSW5StatusCallback(redisAsyncContext *c, void *r, void *privdata) {
 
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -1435,7 +1441,7 @@ void drawSW6StatusCallback(redisAsyncContext *c, void *r, void *privdata) {
 
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -1492,7 +1498,7 @@ void setBrightnessCallback(redisAsyncContext *c, void *r, void *privdata) {
     
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -1541,7 +1547,7 @@ void exitCallback(redisAsyncContext *c, void *r, void *privdata) {
     
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -1579,7 +1585,7 @@ void setLogLevelCallback(redisAsyncContext *c, void *r, void *privdata) {
     
     if (NULL == reply) {
         if (c->errstr) {
-            LOG_ERROR("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
@@ -1614,10 +1620,10 @@ void setLogLevelCallback(redisAsyncContext *c, void *r, void *privdata) {
  */
 void connectCallback(const redisAsyncContext *c, int status) {
     if (status != REDIS_OK) {
-        LOG_ERROR("Error: %s\n", c->errstr);
+        LOG_ERROR("Error: %s", c->errstr);
         return;
     }
-    LOG_INFO("Connected...\n");
+    LOG_INFO("Connected...");
 }
 
 /*
@@ -1638,10 +1644,10 @@ void connectCallback(const redisAsyncContext *c, int status) {
  */
 void disconnectCallback(const redisAsyncContext *c, int status) {
     if (status != REDIS_OK) {
-        LOG_ERROR("Error disconnect: %s\n", c->errstr);
+        LOG_ERROR("Error disconnect: %s", c->errstr);
         return;
     }
-    LOG_INFO("Disconnected...\n");
+    LOG_INFO("Disconnected...");
 }
 
 /*
@@ -1781,12 +1787,12 @@ l_start:
     }
     
     if (gs_async_context->err) {
-        LOG_ERROR("Error async connect: %s\n", gs_async_context->errstr);
+        LOG_ERROR("Error async connect: %s", gs_async_context->errstr);
         goto l_free_async_redis;
     }
 
     if(REDIS_OK != redisLibeventAttach(gs_async_context,base)) {
-        LOG_ERROR("Error: error redis libevent attach!\n");
+        LOG_ERROR("Error: error redis libevent attach!");
         goto l_free_async_redis;
     }
 
@@ -1877,7 +1883,7 @@ l_start:
 l_free_async_redis:
     redisAsyncFree(gs_async_context);
     event_base_free(base);
-    printf("exit!\n");
+    printf("exit!");
     
 l_socket_cleanup:
     to_close(gs_socket);
