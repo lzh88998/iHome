@@ -46,9 +46,12 @@ godown_keeper:src/godown_keeper.c $(HIREDIS_LIB) $(COMMON_LIB)
 	
 touch:src/touch.c $(HIREDIS_LIB) $(COMMON_LIB)
 	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS)
+	
+sensor:src/sensor.c $(HIREDIS_LIB) $(COMMON_LIB)
+	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS)
 
 clean:
-	rm -rf *.o *.a cargador godown_keeper touch
+	rm -rf *.o *.a cargador godown_keeper touch sensor
 	rm -rf src/*.o
 
 dep:
