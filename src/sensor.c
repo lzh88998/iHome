@@ -1,3 +1,11 @@
+/*
+ * Copyright lzh88998 and distributed under Apache 2.0 license
+ * 
+ * sensor is a micro service receive sensor data from LCD I2C
+ * bus and publish to redis
+ * 
+ */
+ 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,6 +37,25 @@ static redisContext *gs_sync_context = NULL;
 
 static int gs_exit = 0;
 
+/*
+ * When user input incorrect data, this service will
+ * exit immediately. And with this function, it can
+ * provide user a friendly hint for usage.
+ * 
+ * Parameters:
+ * int argc                 Number of input parameters, same function 
+ *                          with argc of main.
+ * char **argv              Actual input parameters, same function with
+ *                          argv of main.
+ * 
+ * Return value:
+ * There is no return value
+ * 
+ * Note: in this function we use printf not using log
+ * as it is necessary to ensure the hint is always 
+ * printed out without the loglevel configuration.
+ * 
+ */
 void print_usage(int argc, char **argv) {
     if(0 >= argc) {
         return;
@@ -44,6 +71,27 @@ void print_usage(int argc, char **argv) {
     printf("%s 192.168.100.100 5000 debug 127.0.0.1 6379\n\n", argv[0]);
 }
 
+/*
+ * Main entry of the service. It will first connect
+ * to LCD sensor port, and then connect to redis
+ * through a sync connection. When received message
+ * from LCD sensor the data will be sent to redis
+ * through the sync connectoin
+ * 
+ * Parameters:
+ * int argc                 Number of input parameters, same function 
+ *                          with argc of main.
+ * char **argv              Actual input parameters, same function with
+ *                          argv of main.
+ * 
+ * Return value:
+ * There is no return value
+ * 
+ * Note: in this function we use printf not using log
+ * as it is necessary to ensure the hint is always 
+ * printed out without the loglevel configuration.
+ * 
+ */
 int main (int argc, char **argv) {
     
 l_start:

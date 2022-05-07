@@ -1,3 +1,28 @@
+/*
+ * Copyright lzh88998 and distributed under Apache 2.0 license
+ * 
+ * touch is a micro service that receive the touch information
+ * from touch panel and perform cache and translate the received
+ * information then publish to redis channel.
+ * 
+ * Due to the touch pad can return data points in a very fast
+ * manner (several data points per second) and may cause some
+ * trouble for controller, so touch will cache and aggregate
+ * the message for a period of MSG_INTERVAL_MS.
+ * 
+ * The translation rule is as following:
+ * If last message have been sent out for at least 
+ * MSG_INTERVAL_MS, then current message will be sent out
+ * immediately. Otherwise, modify the behavior according to
+ * previous and current behavior. for example if last one
+ * is click and current is move, then the whole message 
+ * will be translate to click and update to latest position.
+ * if last message is move and current is click up, then
+ * update the behavior as click up. if last message is click
+ * up and current is click down, then update to move.
+ * 
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
