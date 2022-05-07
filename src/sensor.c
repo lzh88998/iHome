@@ -140,7 +140,7 @@ l_start:
             if(EAGAIN == errno || EWOULDBLOCK == errno) {
                 // Check log level
                 LOG_DEBUG("Check log level")
-                reply = redisCommand(gs_sync_context,"GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
+                reply = redisCommand(gs_sync_context,"GET %s/%s/%d/%s", FLAG_KEY, serv_ip, serv_port, LOG_LEVEL_FLAG_VALUE);
                 if(NULL == reply) {
                     LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
                     goto l_free_redis;
@@ -154,7 +154,7 @@ l_start:
                         freeReplyObject(reply);
 
                         // delete the flag ensure not find it next start
-                        reply = redisCommand(gs_sync_context,"DEL %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
+                        reply = redisCommand(gs_sync_context,"DEL %s/%s/%d/%s", FLAG_KEY, serv_ip, serv_port, LOG_LEVEL_FLAG_VALUE);
                         if(NULL == reply) {
                             LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
                             goto l_free_redis;
@@ -169,7 +169,7 @@ l_start:
 
                 // Check exit flag
                 LOG_DEBUG("Check exit flag")
-                reply = redisCommand(gs_sync_context,"GET %s/%s", FLAG_KEY, serv_ip);
+                reply = redisCommand(gs_sync_context,"GET %s/%s/%d", FLAG_KEY, serv_ip, serv_port);
                 if(NULL == reply) {
                     LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
                     goto l_free_redis;
@@ -182,7 +182,7 @@ l_start:
                         freeReplyObject(reply);
                         
                         // delete the flag ensure not find it next start
-                        reply = redisCommand(gs_sync_context,"DEL %s/%s", FLAG_KEY, serv_ip);
+                        reply = redisCommand(gs_sync_context,"DEL %s/%s/%d", FLAG_KEY, serv_ip, serv_port);
                         if(NULL == reply) {
                             LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
                             goto l_free_redis;
