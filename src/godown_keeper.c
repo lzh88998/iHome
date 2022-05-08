@@ -26,8 +26,8 @@
 
 #define REDIS_MESSAGE_TYPE      "pmessage"
 
-#define EXIT_FLAG_KEY           "godown_keeper/exit"
-#define EXIT_FLAG_VALUE         "1"
+#define EXIT_FLAG_KEY           "godown_keeper"
+#define EXIT_FLAG_VALUE         "exit"
 #define LOG_LEVEL_FLAG_KEY      "godown_keeper/log_level"
 
 static redisContext *gs_sync_context = NULL;

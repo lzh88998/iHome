@@ -1,5 +1,5 @@
-TARGET=
-OBJ=log.o to_socket.o
+TARGET=cargador godown_keeper touch touch_processor sensor lcd sync temp_sync
+OBJ=log.o to_socket.o 
 
 STLIB_MAKE_CMD=$(AR) rcs
 # DYLIB_MAKE_CMD=$(CC) -shared -Wl,-soname,log.so
@@ -55,9 +55,15 @@ sensor:src/sensor.c $(HIREDIS_LIB) $(COMMON_LIB)
 	
 lcd:src/LCD.c $(HIREDIS_LIB) $(COMMON_LIB)
 	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS)
+	
+sync:src/sync.c $(HIREDIS_LIB) $(COMMON_LIB)
+	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS)
+	
+temp_sync:src/temp_sync.c $(HIREDIS_LIB) $(COMMON_LIB)
+	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS) -lm
 
 clean:
-	rm -rf *.o *.a cargador godown_keeper touch sensor
+	rm -rf *.o *.a cargador godown_keeper touch touch_processor sensor lcd sync temp_sync
 	rm -rf src/*.o
 
 dep:

@@ -63,26 +63,6 @@ static char gs_idx_name[6] = {'1', '2', '3', '4', '5', '6'};
 static int gs_exit = 0;
 
 /*
- * convert_temp is used to convert sampled AD value
- * to corresponding environment temperature through
- * a formular. The formular is hardware related
- * in this example it use a 10K NTC with B value
- * 3950
- * 
- * Parameters:
- * unbsigned char v         sampled value from 
- *                          sensor, valid range is 
- *                          0-255
- * 
- * Return value:
- * the converted float value of temperature
- * 
- */
-/*float convert_temp(unsigned char v) {
-    return 298.15 * 3950 / (log((float)v/(255-v)) * 298.15 + 3950) - 273.15;
-}*/
-
-/*
  * convert_encoding is used to convert default utf-8
  * encoding to a LCD accept GB2312 encoding when
  * drawing string.
@@ -989,7 +969,7 @@ l_start:
 
     for(int i = 0; i < 4; i++) {
         LOG_DETAILS("GET %s/%s/%s%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i + 1);
-        redisAsyncCommand(gs_async_context, drawSensorNameCallback, &gs_idx_name[i], "GET %s/%s/%s/%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i + 1);
+        redisAsyncCommand(gs_async_context, drawSensorNameCallback, &gs_idx_name[i], "GET %s/%s/%s%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i + 1);
     }
 
     for(int i = 0; i < 4; i++) {
