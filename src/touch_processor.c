@@ -7,13 +7,20 @@
 #include <async.h>
 #include <adapters/libevent.h>
 
+#include "log.h"
+
 #define REDIS_IP                "127.0.0.1"
 #define REDIS_PORT              6379
 
-#define REDIS_MESSAGE_TYPE      "message"
+#define TOUCH_TOPIC             "touch/*"
 
-#define EXIT_FLAG_KEY           "godown_keeper"
+#define REDIS_MESSAGE_TYPE      "pmessage"
+
+#define FLAG_KEY               "touch_processor"
+#define LCD_FLAG_KEY            "lcd"
 #define EXIT_FLAG_VALUE         "exit"
+
+#define SW_TOPIC              "sw"
 
 #define SND_RCV_OK              0
 
@@ -22,135 +29,171 @@ static redisAsyncContext *gs_async_context = NULL;
 
 static int gs_exit = 0;
 
-static char* enable_topic = NULL;
+/*
+ * exitCallback is used to check whether
+ * the micro service needs to exit. When
+ * "exit" is received then exit the 
+ * micro service
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           Not used
+ * 
+ * Return value:
+ * There is no return value
+ */
+void exitCallback(redisAsyncContext *c, void *r, void *privdata) {
+    redisReply *reply = r;
+    const char* ch = NULL;
+    
+    if (NULL == reply) {
+        if (c->errstr) {
+            LOG_ERROR("errstr: %s", c->errstr);
+            redisAsyncDisconnect(c);
+        }
+        return;
+    }
 
-static char* touch_topic = NULL;
-static char* sw_topic = NULL;
+    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
+        ch = reply->element[2]->str;
+    } else if(NULL != reply->str) {
+        ch = reply->str;
+    } else {
+        LOG_WARNING("Warning: exitCallback does not have valid value!");
+        return;
+    }
+    
+    if(0 == strcmp(EXIT_FLAG_VALUE, ch)) {
+        gs_exit = 1;
+        redisAsyncDisconnect(c);
+    }
+}
 
-static int x_start = -1;
-static int x_end = -1;
-static int y_start = -1;
-static int y_end = -1;
+/*
+ * setLogLevelCallback is used to update
+ * log level for current micro service.
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           Not used
+ * 
+ * Return value:
+ * There is no return value
+ */
+void setLogLevelCallback(redisAsyncContext *c, void *r, void *privdata) {
+    redisReply *reply = r;
+    const char* ch = NULL;
+    
+    if (NULL == reply) {
+        if (c->errstr) {
+            LOG_ERROR("errstr: %s", c->errstr);
+            redisAsyncDisconnect(c);
+        }
+        return;
+    }
 
+    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
+        ch = reply->element[2]->str;
+    } else if(NULL != reply->str) {
+        ch = reply->str;
+    } else {
+        LOG_WARNING("Warning: setLogLevelCallback does not have valid value!");
+        return;
+    }
+    
+    if(0 > log_set_level(ch)) {
+        LOG_WARNING("Warning: invalid log level %s!", ch);
+    }
+}
+
+/*
+ * subscribeCallback is used to process
+ * click event
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           Not used
+ * 
+ * Return value:
+ * There is no return value
+ */
 void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
     if (reply == NULL) {
         if (c->errstr) {
-            printf("errstr: %s\n", c->errstr);
+            LOG_ERROR("errstr: %n", c->errstr);
+            redisAsyncDisconnect(c);
         }
         return;
     }
     
-    printf("sub reply type: %d\n", reply->type);
-    printf("sub reply element count: %d\n", reply->elements);
-    switch(reply->type) {
-        case REDIS_REPLY_ARRAY: 
-            for(int i = 0; i < reply->elements; i++) {
-                printf("sub Array element %d: %s\n", i, reply->element[i]->str);
-            }
-            
-            if(3 == reply->elements) { // psubscribe element 0 is "message", element 1 is key pattern element 2 is key element 3 is value string
-                if(NULL != reply->element[0]->str && 0 == strcmp(REDIS_MESSAGE_TYPE, reply->element[0]->str)) {
-                    if(NULL != reply->element[2]) {
-                        if(0 == strcmp(EXIT_FLAG_KEY, reply->element[2]->str)) {
-                            if(NULL != reply->element[2] && 0 == strcmp(EXIT_FLAG_VALUE, reply->element[2]->str)) {
-                                redisAsyncDisconnect(c);
-                            }
-                        } else if(NULL != reply->element[2]) {
-                            unsigned char cmd = 0x00;
-                            unsigned int x = 0;
-                            unsigned int y = 0;
-                            
-                            char* ch = reply->element[2]->str;
-                            while('\0' != *ch && '/' != *ch) {
-                                if('0' <= *ch && *ch <= '9') {
-                                    cmd *= 10;
-                                    cmd += (*ch - '0');
-                                } else {
-                                    printf("Error invalid input 1 %d!\n", *ch);
-                                    return;
+    LOG_DETAILS("sub reply type: %d", reply->type);
+    LOG_DETAILS("sub reply element count: %d", reply->elements);
+    
+    if(REDIS_REPLY_ARRAY == reply->type && 4 == reply->elements) {
+        if(NULL != reply->element[2] && NULL != reply->element[2]->str) {
+            char* addr = strchr(reply->element[2]->str, '/');
+            if(NULL != addr) {
+                addr++;
+                if(NULL != reply->element[3] && NULL != reply->element[3]->str) {
+                    char* ch = reply->element[3]->str;
+                    unsigned char cmd = atoi(ch) & 0xFF;
+                    if(0xB3 == cmd) {
+                        unsigned int x = 0, y = 0;
+                        ch = strchr(ch, '/');
+                        if(NULL != ch) {
+                            ch++;
+                            x = atoi(ch);
+                            ch = strchr(ch, '/');
+                            if(NULL != ch) {
+                                ch++;
+                                y = atoi(ch);
+                                if(84 <=x && x < 163) {
+                                    cmd = 1;
+                                } else if (163 <=x && x < 241 ) {
+                                    cmd = 2;
+                                } else if (241 <=x && x < 320) {
+                                    cmd = 3;
                                 }
-                                ch++;
-                            }
-                            
-                            if('\0' != *ch)
-                                ch++;
                                 
-                            while('\0' != *ch && '/' != *ch) {
-                                if('0' <= *ch && *ch <= '9') {
-                                    x *= 10;
-                                    x += (*ch - '0');
-                                } else {
-                                    printf("Error invalid input 2 %d!\n", *ch);
-                                    return;
+                                if(120 < y) {
+                                    cmd += 3;
                                 }
-                                ch++;
-                            }
-
-                            if('\0' != *ch)
-                                ch++;
                                 
-                            while('\0' != *ch && '/' != *ch) {
-                                if('0' <= *ch && *ch <= '9') {
-                                    y *= 10;
-                                    y += (*ch - '0');
-                                } else {
-                                    printf("Error invalid input 3 %d!\n", *ch);
-                                    return;
-                                }
-                                ch++;
-                            }
-                            
-                            printf("Cmd: 0x%x, x: %d, y: %d\n", cmd, x, y);
-                            
-                            if(0xB3 != cmd) {
-                                printf("Skip command 0x%x\n", cmd);
-                                return;
-                            }
-                            
-                            printf("X_Start: %d, Y_Start: %d,X_End %d, Y_End %d\n", x_start, y_start, x_end, y_end);
-                            
-                            if(x_start <= x && x <= x_end && y_start <= y && y <= y_end) {
-                                redisReply* reply = redisCommand(gs_sync_context,"GET %s", sw_topic);
+                                redisReply* reply2 = redisCommand(gs_sync_context,"GET %s/%s/%s%d", LCD_FLAG_KEY, addr, SW_TOPIC, cmd);
                                 unsigned char result = 0;
-                                if(NULL == reply) {
+                                if(NULL == reply2) {
                                     printf("Failed to sync query redis %s\n", gs_sync_context->errstr);
                                     redisAsyncDisconnect(c);
                                 }
-                                printf("PING: %s\n", reply->str);
-                                if(NULL != reply->str) {
-                                    result = 0 == strcmp("0", reply->str);
+                                printf("Get reply: %s\n", reply2->str);
+                                if(NULL != reply2->str) {
+                                    result = 0 == strcmp("0", reply2->str);
+
+                                    freeReplyObject(reply2);
+                                    reply2 = redisCommand(gs_sync_context, "PUBLISH %s/%s/%s%d %d", LCD_FLAG_KEY, addr, SW_TOPIC, cmd, result);
+                                    if(NULL == reply2) {
+                                        printf("Failed to sync query redis %s\n", gs_sync_context->errstr);
+                                        redisAsyncDisconnect(c);
+                                    }
+                                    printf("Set result: %s\n", reply2->str);
                                 }
-                                
-                                printf("Cur State in redis: %s\n", reply->str);
-                                freeReplyObject(reply);
-                                
-                                reply = redisCommand(gs_sync_context, "PUBLISH %s %d", sw_topic, result);
-                                if(NULL == reply) {
-                                    printf("Failed to sync query redis %s\n", gs_sync_context->errstr);
-                                    redisAsyncDisconnect(c);
-                                }
-                                printf("Set result: %s\n", reply->str);
-                                freeReplyObject(reply);
+                                freeReplyObject(reply2);
                             }
                         }
                     }
                 }
             }
-        break;
-        case REDIS_REPLY_ERROR:
-        case REDIS_REPLY_VERB:
-        case REDIS_REPLY_STRING:
-        case REDIS_REPLY_BIGNUM:
-            printf("sub argv[%s]: %s\n", (char*)privdata, reply->str);
-        break;
-        case REDIS_REPLY_DOUBLE:
-            printf("sub Double %lf\n", reply->dval);
-        break;
-        case REDIS_REPLY_INTEGER:
-            printf("sub Integer %ld\n", reply->integer);
-        break;
         }
+    } else {
+        LOG_ERROR("Warning: invalid data type %d %d received!", reply->type, reply->elements);
+        for(size_t i = 0; i < reply->elements; i++) {
+            LOG_DEBUG("Item %d: %s", i, reply->element[i]->str);
+        }
+    }
 
     printf("subscribe finished!\n");
 }
@@ -172,11 +215,17 @@ void disconnectCallback(const redisAsyncContext *c, int status) {
 }
 
 void print_usage(int argc, char **argv) {
+    if(0 > argc) {
+        return;
+    }
+    
     printf("Invalid input parameters!\n");
     printf("Usage: (<optional parameters>)\n");
-    printf("%s redis_ip redis_port enable_topic touch_topic sw_topic x_start y_start x_end y_end\n");
+    printf("%s <log_level> <redis_ip> <redis_port>\n", argv[0]);
     printf("E.g.:\n");
-    printf("%s 127.0.0.1 6379 touch/1/enabled touch/1 controller/1/1 84 0 163 119\n\n");
+    printf("%s\n\n", argv[0]);
+    printf("%s debug\n\n", argv[0]);
+    printf("%s debug 127.0.0.1 6379\n\n", argv[0]);
 }
 
 int main (int argc, char **argv) {
@@ -185,49 +234,47 @@ l_start:
 #ifndef _WIN32
     signal(SIGPIPE, SIG_IGN);
 #endif
-    struct event_base *base;
+    printf("================= Start =================");
+    const char* redis_ip = REDIS_IP;
+    int redis_port = REDIS_PORT;
+    struct event_base *base = event_base_new();
     
-    int ret;
-
-    char* redis_ip;
-    int redis_port;
-    
-    if(10 != argc) {
-        print_usage(argc, argv);
-        return -1;
+    printf("Parsing parameters");
+    switch(argc) {
+        case 1:
+            break;
+        case 2:
+            if(0 > log_set_level(argv[1])) {
+                print_usage(argc, argv);
+                return -2;
+            }
+            break;
+        case 3:
+            redis_ip = argv[1];
+            redis_port = atoi(argv[2]);
+            break;
+        case 4:
+            if(0 > log_set_level(argv[3])) {
+                print_usage(argc, argv);
+                return -3;
+            }
+            redis_ip = REDIS_IP;
+            redis_port = REDIS_PORT;
+            break;
+        default:
+            print_usage(argc, argv);
+            return -1;
     }
     
-    redis_ip = argv[1];
-    redis_port = atoi(argv[2]);
-    
-    enable_topic = argv[3];
-    touch_topic = argv[4];
-    sw_topic = argv[5];
-    
-    x_start = atoi(argv[6]);
-    y_start = atoi(argv[7]);
-    x_end = atoi(argv[8]);
-    y_end = atoi(argv[9]);
-    
-    if(x_start > x_end) { // swap x
-        ret = x_start;
-        x_start = x_end;
-        x_end = ret;
-    }
-    
-    if(y_start >= y_end) { // swap y
-        ret = y_start;
-        y_start = y_end;
-        y_end = ret;
-    }
-
-    struct timeval timeout = { 0, 500000 }; // 1.5 seconds
+    LOG_DETAILS("Connecting to redis");
+    struct timeval timeout = { 0, 500000 }; // 0.5 seconds
     gs_sync_context = redisConnectWithTimeout(redis_ip, redis_port, timeout);
     if(NULL == gs_sync_context) {
         printf("Connection error: can't allocate redis context\n");
         goto l_exit;
     }
     
+    printf("async");
     if(gs_sync_context->err) {
         printf("Connection error: %s\n", gs_sync_context->errstr);
         goto l_free_sync_redis;
@@ -241,7 +288,6 @@ l_start:
     printf("PING: %s\n", reply->str);
     freeReplyObject(reply);
     
-    base = event_base_new();
     redisOptions options = {0};
     REDIS_OPTIONS_SET_TCP(&options, redis_ip, redis_port);
     options.connect_timeout = &timeout;
@@ -260,7 +306,9 @@ l_start:
     redisAsyncSetConnectCallback(gs_async_context,connectCallback);
     redisAsyncSetDisconnectCallback(gs_async_context,disconnectCallback);
 
-    redisAsyncCommand(gs_async_context, subscribeCallback, NULL, "SUBSCRIBE %s", touch_topic);
+    redisAsyncCommand(gs_async_context, subscribeCallback, NULL, "PSUBSCRIBE %s", TOUCH_TOPIC);
+    redisAsyncCommand(gs_async_context, exitCallback, NULL, "SUBSCRIBE %s", FLAG_KEY);
+    redisAsyncCommand(gs_async_context, setLogLevelCallback, NULL, "SUBSCRIBE %s/%s", FLAG_KEY, LOG_LEVEL_FLAG_VALUE);
     event_base_dispatch(base);
     
 l_free_sync_redis:

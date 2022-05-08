@@ -46,6 +46,9 @@ godown_keeper:src/godown_keeper.c $(HIREDIS_LIB) $(COMMON_LIB)
 	
 touch:src/touch.c $(HIREDIS_LIB) $(COMMON_LIB)
 	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS)
+
+touch_processor:src/touch_processor.c $(HIREDIS_LIB) $(COMMON_LIB)
+	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS)
 	
 sensor:src/sensor.c $(HIREDIS_LIB) $(COMMON_LIB)
 	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS)

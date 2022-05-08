@@ -213,8 +213,8 @@ l_start:
                         // only send out when there is enough interval
                         last_time.tv_sec = cur_time.tv_sec;
                         last_time.tv_usec = cur_time.tv_usec;
-                        LOG_DETAILS("PUBLISH %s/%s/cmd 0x%x %d %d", FLAG_KEY, serv_ip, cmd, x, y);
-                        reply = redisCommand(gs_sync_context,"PUBLISH %s/%s/cmd %d/%d/%d", FLAG_KEY, serv_ip, cmd, x, y);
+                        LOG_DETAILS("PUBLISH %s/%s 0x%x %d %d", FLAG_KEY, serv_ip, cmd, x, y);
+                        reply = redisCommand(gs_sync_context,"PUBLISH %s/%s %d/%d/%d", FLAG_KEY, serv_ip, cmd, x, y);
                         if(NULL == reply) {
                             LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
                             goto l_free_redis;
@@ -338,8 +338,8 @@ l_start:
                             last_time.tv_sec = cur_time.tv_sec;
                             last_time.tv_usec = cur_time.tv_usec;
                             cmd = temp;
-                            LOG_DETAILS("PUBLISH %s/%s/cmd 0x%x %d %d", FLAG_KEY, serv_ip, cmd, x, y);
-                            reply = redisCommand(gs_sync_context,"PUBLISH %s/%s/cmd %d/%d/%d", FLAG_KEY, serv_ip, cmd, x, y);
+                            LOG_DETAILS("PUBLISH %s/%s 0x%x %d %d", FLAG_KEY, serv_ip, cmd, x, y);
+                            reply = redisCommand(gs_sync_context,"PUBLISH %s/%s %d/%d/%d", FLAG_KEY, serv_ip, cmd, x, y);
                             if(NULL == reply) {
                                 LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
                                 goto l_free_redis;
@@ -381,8 +381,8 @@ l_start:
                         last_time.tv_sec = cur_time.tv_sec;
                         last_time.tv_usec = cur_time.tv_usec;
                         
-                        LOG_DETAILS("PUBLISH %s/%s/cmd 0x%x %d %d", FLAG_KEY, serv_ip, cmd, x, y);
-                        reply = redisCommand(gs_sync_context,"PUBLISH %s/%s/cmd %d/%d/%d", FLAG_KEY, serv_ip, cmd, x, y);
+                        LOG_DETAILS("PUBLISH %s/%s 0x%x %d %d", FLAG_KEY, serv_ip, cmd, x, y);
+                        reply = redisCommand(gs_sync_context,"PUBLISH %s/%s %d/%d/%d", FLAG_KEY, serv_ip, cmd, x, y);
                         if(NULL == reply) {
                             LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
                             goto l_free_redis;
