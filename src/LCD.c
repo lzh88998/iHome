@@ -1883,7 +1883,7 @@ l_start:
 l_free_async_redis:
     redisAsyncFree(gs_async_context);
     event_base_free(base);
-    printf("exit!");
+    LOG_INFO("exit!");
     
 l_socket_cleanup:
     to_close(gs_socket);
