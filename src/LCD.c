@@ -21,45 +21,33 @@
 #include "log.h"
 #include "to_socket.h"
 
-#define REDIS_IP        "127.0.0.1"
-#define REDIS_PORT      6379
+#define REDIS_IP                    "127.0.0.1"
+#define REDIS_PORT                  6379
 
-#define COLOR_RED       0xF800
-#define COLOR_GREEN     0x07E0
-#define COLOR_BLUE      0x001F
-#define COLOR_WHITE     0xFFFF
-#define COLOR_BLACK     0x0000
+#define COLOR_RED                   0xF800
+#define COLOR_GREEN                 0x07E0
+#define COLOR_BLUE                  0x001F
+#define COLOR_WHITE                 0xFFFF
+#define COLOR_BLACK                 0x0000
 
-#define SND_RCV_OK      0;
+#define SND_RCV_OK                  0;
 
-#define FLAG_KEY                "lcd"
-#define EXIT_FLAG_VALUE         "exit"
+#define SENSOR_VALUE_INTERVAL_MS    1500
 
-#define SENSOR_1_NAME_TOPIC     "sensor1name"
-#define SENSOR_2_NAME_TOPIC     "sensor2name"
-#define SENSOR_3_NAME_TOPIC     "sensor3name"
-#define SENSOR_4_NAME_TOPIC     "sensor4name"
+#define FLAG_KEY                    "lcd"
+#define EXIT_FLAG_VALUE             "exit"
 
-#define SENSOR_1_TOPIC          "sensor1"
-#define SENSOR_2_TOPIC          "sensor2"
-#define SENSOR_3_TOPIC          "sensor3"
-#define SENSOR_4_TOPIC          "sensor4"
+#define SENSOR_NAME_TOPIC           "sensorname"
 
-#define BRIGHTNESS_TOPIC        "brightness"
+#define SENSOR_TOPIC                "sensor"
 
-#define SW_1_NAME_TOPIC         "sw1name"
-#define SW_2_NAME_TOPIC         "sw2name"
-#define SW_3_NAME_TOPIC         "sw3name"
-#define SW_4_NAME_TOPIC         "sw4name"
-#define SW_5_NAME_TOPIC         "sw5name"
-#define SW_6_NAME_TOPIC         "sw6name"
+#define BRIGHTNESS_TOPIC            "brightness"
 
-#define SW_1_TOPIC              "sw1"
-#define SW_2_TOPIC              "sw2"
-#define SW_3_TOPIC              "sw3"
-#define SW_4_TOPIC              "sw4"
-#define SW_5_TOPIC              "sw5"
-#define SW_6_TOPIC              "sw6"
+#define SW_NAME_TOPIC               "swname"
+
+#define SW_TOPIC                    "sw"
+
+static struct timeval gs_sensor[4];
 
 static to_socket_ctx gs_socket = -1;
 
@@ -69,6 +57,8 @@ static char input_buffer[1024];
 static char output_buffer[1024];
 
 static iconv_t conv = NULL;
+
+static char gs_idx_name[6] = {'1', '2', '3', '4', '5', '6'};
 
 static int gs_exit = 0;
 
@@ -345,31 +335,48 @@ int draw_line(unsigned int x_start, unsigned int y_start, unsigned int x_end, un
  * Return value:
  * There is no return value
  */
-void drawSensor1NameCallback(redisAsyncContext *c, void *r, void *privdata) {
+void drawSensorNameCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
     const char* ch = NULL;
     unsigned int x_start, y_start, x_end, y_end;
     unsigned char font_size;
-
-    x_start = 2;
-    y_start = 6;
-    x_end = 82;
-    y_end = 59;
-    font_size = 24;
     
+    LOG_DETAILS("Enter drawSensorNameCallback");
+    
+    char* priv_ch = (char*)privdata;
+    if(*priv_ch < '1' || *priv_ch > '4') {
+        LOG_WARNING("Warning: invalid priv data %c!", priv_ch);
+        return;
+    }
+
     if (NULL == reply) {
         if (c->errstr) {
             LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
+    
+    LOG_DETAILS("Priv data: %c", *priv_ch);
 
+    x_start = 2;
+    x_end = 82;
+    y_start = (*priv_ch - '1') * 60 + 6;
+    y_end = (*priv_ch - '1') * 60 + 31;
+    font_size = 24;
+    
     if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
         ch = reply->element[2]->str;
     } else if(NULL != reply->str) {
         ch = reply->str;
     } else {
         LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
+        if(0 == reply->elements) {
+            LOG_DETAILS("Sting: %s", reply->str);
+        } else {
+            for(size_t i = 0; i < reply->elements; i++) {
+                LOG_DETAILS("Element %d: %s", i, reply->element[i]->str);
+            }
+        }
         return;
     }
     
@@ -383,174 +390,7 @@ void drawSensor1NameCallback(redisAsyncContext *c, void *r, void *privdata) {
         LOG_ERROR("Error drawSensor1Callback drawing string!");
         redisAsyncDisconnect(c);
     }
-}
-
-/*
- * drawSensor2NameCallback is used to draw the name of
- * sensor 2 in corresponding area. The design here is 
- * to put the name string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           Not used
- * 
- * Return value:
- * There is no return value
- */
-void drawSensor2NameCallback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
-    unsigned char font_size;
-
-    x_start = 2;
-    y_start = 66;
-    x_end = 82;
-    y_end = 119;
-    font_size = 24;
-    
-    if (NULL == reply) {
-        if (c->errstr) {
-            LOG_ERROR("errstr: %s", c->errstr);
-        }
-        return;
-    }
-
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
-        return;
-    }
-    
-    if(0 > draw_rectangle(x_start, y_start, x_end, y_end, COLOR_BLUE)) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
-    }
-    
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, ch)) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
-    }
-}
-
-/*
- * drawSensor3NameCallback is used to draw the name of
- * sensor 3 in corresponding area. The design here is 
- * to put the name string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           Not used
- * 
- * Return value:
- * There is no return value
- */
-void drawSensor3NameCallback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
-    unsigned char font_size;
-
-    x_start = 2;
-    y_start = 126;
-    x_end = 82;
-    y_end = 179;
-    font_size = 24;
-    
-    if (NULL == reply) {
-        if (c->errstr) {
-            LOG_ERROR("errstr: %s", c->errstr);
-        }
-        return;
-    }
-
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
-        return;
-    }
-    
-    if(0 > draw_rectangle(x_start, y_start, x_end, y_end, COLOR_BLUE)) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
-    }
-    
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, ch)) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
-    }
-}
-
-/*
- * drawSensor4NameCallback is used to draw the name of
- * sensor 4 in corresponding area. The design here is 
- * to put the name string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           Not used
- * 
- * Return value:
- * There is no return value
- */
-void drawSensor4NameCallback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
-    unsigned char font_size;
-
-    x_start = 2;
-    y_start = 186;
-    x_end = 82;
-    y_end = 239;
-    font_size = 24;
-    
-    if (NULL == reply) {
-        if (c->errstr) {
-            LOG_ERROR("errstr: %s", c->errstr);
-        }
-        return;
-    }
-
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
-        return;
-    }
-    
-    if(0 > draw_rectangle(x_start, y_start, x_end, y_end, COLOR_BLUE)) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
-    }
-    
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, ch)) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
-    }
+    LOG_DETAILS("Enter finished!");
 }
 
 /*
@@ -569,199 +409,54 @@ void drawSensor4NameCallback(redisAsyncContext *c, void *r, void *privdata) {
  * Return value:
  * There is no return value
  */
-void drawSensor1Callback(redisAsyncContext *c, void *r, void *privdata) {
+void drawSensorCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
     const char* ch = NULL;
     unsigned int x_start, y_start, x_end, y_end;
     unsigned char font_size;
 
-    x_start = 2;
-    y_start = 34;
-    x_end = 82;
-    y_end = 59;
-    font_size = 24;
-    
+    char* priv_ch = (char*)privdata;
+    if(*priv_ch < '1' || *priv_ch > '4') {
+        LOG_WARNING("Warning: invalid priv data %c!", priv_ch);
+        return;
+    }
+
     if (NULL == reply) {
         if (c->errstr) {
             LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
-
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
+    
+    struct timeval newTime;
+    gettimeofday(&newTime, NULL);
+    if(((newTime.tv_sec - gs_sensor[*priv_ch - '1'].tv_sec) * 1000 + 
+        (newTime.tv_usec - gs_sensor[*priv_ch - '1'].tv_usec) / 1000) < SENSOR_VALUE_INTERVAL_MS) {
+        LOG_DETAILS("Refresh frequency of channel %c is too high, skip", *priv_ch);
         return;
     }
-    
-    if(0 > draw_rectangle(x_start, y_start, x_end, y_end, COLOR_BLUE)) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
-    }
-    
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, ch)) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
-    }
-}
 
-/*
- * drawSensor2Callback is used to draw the value of
- * sensor 2 in corresponding area. The design here is 
- * to put the value string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           Not used
- * 
- * Return value:
- * There is no return value
- */
-void drawSensor2Callback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
-    unsigned char font_size;
+    gettimeofday(&gs_sensor[*priv_ch - '1'], NULL);
 
     x_start = 2;
-    y_start = 94;
     x_end = 82;
-    y_end = 119;
+    y_start = (*priv_ch - '1') * 60 + 34;
+    y_end = (*priv_ch - '1') * 60 + 59;
     font_size = 24;
     
-    if (NULL == reply) {
-        if (c->errstr) {
-            LOG_ERROR("errstr: %s", c->errstr);
-        }
-        return;
-    }
-
     if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
         ch = reply->element[2]->str;
     } else if(NULL != reply->str) {
         ch = reply->str;
     } else {
         LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
-        return;
-    }
-    
-    if(0 > draw_rectangle(x_start, y_start, x_end, y_end, COLOR_BLUE)) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
-    }
-    
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, ch)) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
-    }
-}
-
-/*
- * drawSensor3Callback is used to draw the value of
- * sensor 3 in corresponding area. The design here is 
- * to put the value string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           Not used
- * 
- * Return value:
- * There is no return value
- */
-void drawSensor3Callback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
-    unsigned char font_size;
-
-    x_start = 2;
-    y_start = 154;
-    x_end = 82;
-    y_end = 179;
-    font_size = 24;
-    
-    if (NULL == reply) {
-        if (c->errstr) {
-            LOG_ERROR("errstr: %s", c->errstr);
+        if(0 == reply->elements) {
+            LOG_DETAILS("Sting: %s", reply->str);
+        } else {
+            for(size_t i = 0; i < reply->elements; i++) {
+                LOG_DETAILS("Element %d: %s", i, reply->element[i]->str);
+            }
         }
-        return;
-    }
-
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
-        return;
-    }
-    
-    if(0 > draw_rectangle(x_start, y_start, x_end, y_end, COLOR_BLUE)) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
-    }
-    
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, ch)) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
-    }
-}
-
-/*
- * drawSensor4Callback is used to draw the value of
- * sensor 4 in corresponding area. The design here is 
- * to put the value string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           Not used
- * 
- * Return value:
- * There is no return value
- */
-void drawSensor4Callback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
-    unsigned char font_size;
-
-    x_start = 2;
-    y_start = 214;
-    x_end = 82;
-    y_end = 239;
-    font_size = 24;
-    
-    if (NULL == reply) {
-        if (c->errstr) {
-            LOG_ERROR("errstr: %s", c->errstr);
-        }
-        return;
-    }
-
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
         return;
     }
     
@@ -793,18 +488,18 @@ void drawSensor4Callback(redisAsyncContext *c, void *r, void *privdata) {
  * Return value:
  * There is no return value
  */
-void drawSW1NameCallback(redisAsyncContext *c, void *r, void *privdata) {
+void drawSWNameCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
     const char* ch = NULL;
     unsigned int x_start, y_start, x_end, y_end;
     unsigned char font_size;
 
-    x_start = 91;
-    y_start = 31;
-    x_end = 162;
-    y_end = 64;
-    font_size = 32;
-    
+    char* priv_ch = (char*)privdata;
+    if(*priv_ch < '1' || *priv_ch > '6') {
+        LOG_WARNING("Warning: invalid priv data %c!", priv_ch);
+        return;
+    }
+
     if (NULL == reply) {
         if (c->errstr) {
             LOG_ERROR("errstr: %s", c->errstr);
@@ -812,292 +507,31 @@ void drawSW1NameCallback(redisAsyncContext *c, void *r, void *privdata) {
         return;
     }
 
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
+    x_start = ((*priv_ch - '1') % 3) * 79 + 91;
+    x_end = ((*priv_ch - '1') % 3) * 79 + 162;
+
+    if(*priv_ch > '3') {
+        y_start = 152;
+        y_end = 185;
     } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
-        return;
+        y_start = 31;
+        y_end = 64;
     }
-    
-    if(0 > draw_rectangle(x_start, y_start, x_end, y_end, COLOR_BLUE)) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
-    }
-    
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, ch)) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
-    }
-}
-
-/*
- * drawSensor2NameCallback is used to draw the name of
- * switch 2 in corresponding area. The design here is 
- * to put the name string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           Not used
- * 
- * Return value:
- * There is no return value
- */
-void drawSW2NameCallback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
-    unsigned char font_size;
-
-    x_start = 171;
-    y_start = 31;
-    x_end = 240;
-    y_end = 64;
     font_size = 32;
     
-    if (NULL == reply) {
-        if (c->errstr) {
-            LOG_ERROR("errstr: %s", c->errstr);
-        }
-        return;
-    }
-
     if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
         ch = reply->element[2]->str;
     } else if(NULL != reply->str) {
         ch = reply->str;
     } else {
         LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
-        return;
-    }
-    
-    if(0 > draw_rectangle(x_start, y_start, x_end, y_end, COLOR_BLUE)) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
-    }
-    
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, ch)) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
-    }
-}
-
-/*
- * drawSensor3NameCallback is used to draw the name of
- * switch 3 in corresponding area. The design here is 
- * to put the name string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           Not used
- * 
- * Return value:
- * There is no return value
- */
-void drawSW3NameCallback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
-    unsigned char font_size;
-
-    x_start = 249;
-    y_start = 31;
-    x_end = 319;
-    y_end = 64;
-    font_size = 32;
-    
-    if (NULL == reply) {
-        if (c->errstr) {
-            LOG_ERROR("errstr: %s", c->errstr);
+        if(0 == reply->elements) {
+            LOG_DETAILS("Sting: %s", reply->str);
+        } else {
+            for(size_t i = 0; i < reply->elements; i++) {
+                LOG_DETAILS("Element %d: %s", i, reply->element[i]->str);
+            }
         }
-        return;
-    }
-
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
-        return;
-    }
-    
-    if(0 > draw_rectangle(x_start, y_start, x_end, y_end, COLOR_BLUE)) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
-    }
-    
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, ch)) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
-    }
-}
-
-/*
- * drawSensor4NameCallback is used to draw the name of
- * switch 4 in corresponding area. The design here is 
- * to put the name string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           Not used
- * 
- * Return value:
- * There is no return value
- */
-void drawSW4NameCallback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
-    unsigned char font_size;
-
-    x_start = 91;
-    y_start = 152;
-    x_end = 162;
-    y_end = 185;
-    font_size = 32;
-    
-    if (NULL == reply) {
-        if (c->errstr) {
-            LOG_ERROR("errstr: %s", c->errstr);
-        }
-        return;
-    }
-
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
-        return;
-    }
-    
-    if(0 > draw_rectangle(x_start, y_start, x_end, y_end, COLOR_BLUE)) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
-    }
-    
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, ch)) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
-    }
-}
-
-/*
- * drawSensor5NameCallback is used to draw the name of
- * switch 5 in corresponding area. The design here is 
- * to put the name string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           Not used
- * 
- * Return value:
- * There is no return value
- */
-void drawSW5NameCallback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
-    unsigned char font_size;
-
-    x_start = 171;
-    y_start = 152;
-    x_end = 240;
-    y_end = 185;
-    font_size = 32;
-    
-    if (NULL == reply) {
-        if (c->errstr) {
-            LOG_ERROR("errstr: %s", c->errstr);
-        }
-        return;
-    }
-
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
-        return;
-    }
-    
-    if(0 > draw_rectangle(x_start, y_start, x_end, y_end, COLOR_BLUE)) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
-    }
-    
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, ch)) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
-    }
-}
-
-/*
- * drawSensor6NameCallback is used to draw the name of
- * switch 6 in corresponding area. The design here is 
- * to put the name string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           Not used
- * 
- * Return value:
- * There is no return value
- */
-void drawSW6NameCallback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
-    unsigned char font_size;
-
-    x_start = 249;
-    y_start = 152;
-    x_end = 319;
-    y_end = 185;
-    font_size = 32;
-    
-    if (NULL == reply) {
-        if (c->errstr) {
-            LOG_ERROR("errstr: %s", c->errstr);
-        }
-        return;
-    }
-
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
         return;
     }
     
@@ -1129,10 +563,16 @@ void drawSW6NameCallback(redisAsyncContext *c, void *r, void *privdata) {
  * Return value:
  * There is no return value
  */
-void drawSW1StatusCallback(redisAsyncContext *c, void *r, void *privdata) {
+void drawSWStatusCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
     const char* ch = NULL;
     unsigned int x_start, y_start, x_end, y_end;
+
+    char* priv_ch = (char*)privdata;
+    if(*priv_ch < '1' || *priv_ch > '6') {
+        LOG_WARNING("Warning: invalid priv data %c!", priv_ch);
+        return;
+    }
 
     if (NULL == reply) {
         if (c->errstr) {
@@ -1147,18 +587,31 @@ void drawSW1StatusCallback(redisAsyncContext *c, void *r, void *privdata) {
         ch = reply->str;
     } else {
         LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
+        if(0 == reply->elements) {
+            LOG_DETAILS("Sting: %s", reply->str);
+        } else {
+            for(size_t i = 0; i < reply->elements; i++) {
+                LOG_DETAILS("Element %d: %s", i, reply->element[i]->str);
+            }
+        }
         return;
     }
     
-    y_start = 69;
-    y_end = 86;
+    if(*priv_ch > '3') {
+        y_start = 190;
+        y_end = 207;
+    } else {
+        y_start = 69;
+        y_end = 86;
+    }
+
     if(0 == strcmp("0", ch)) {
-        x_start = 107;
-        x_end = 124;
+        x_start = ((*priv_ch - '1') % 3) * 79 + 107;
+        x_end = ((*priv_ch - '1') % 3) * 79 + 124;
         ch = "关";
     } else {
-        x_start = 123;
-        x_end = 140;
+        x_start = ((*priv_ch - '1') % 3) * 79 + 123;
+        x_end = ((*priv_ch - '1') % 3) * 79 + 140;
         ch = "开";
     }
     
@@ -1173,311 +626,6 @@ void drawSW1StatusCallback(redisAsyncContext *c, void *r, void *privdata) {
         redisAsyncDisconnect(c);
     }
  }
-
-/*
- * drawSW2StatusCallback is used to draw the value of
- * switch 2 in corresponding area. The design here is 
- * to put the value string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           Not used
- * 
- * Return value:
- * There is no return value
- */
-void drawSW2StatusCallback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
-
-    if (NULL == reply) {
-        if (c->errstr) {
-            LOG_ERROR("errstr: %s", c->errstr);
-        }
-        return;
-    }
-
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
-        return;
-    }
-    
-    y_start = 69;
-    y_end = 86;
-    if(0 == strcmp("0", ch)) {
-        x_start = 187;
-        x_end = 204;
-        ch = "关";
-    } else {
-        x_start = 203;
-        x_end = 220;
-        ch = "开";
-    }
-    
-    if(0 > draw_rectangle(187, 69, 220, 86, COLOR_BLUE)) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
-    }
-    
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, 16, ch)) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
-    }
-}
-
-/*
- * drawSW3StatusCallback is used to draw the value of
- * switch 3 in corresponding area. The design here is 
- * to put the value string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           Not used
- * 
- * Return value:
- * There is no return value
- */
-void drawSW3StatusCallback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
-
-    if (NULL == reply) {
-        if (c->errstr) {
-            LOG_ERROR("errstr: %s", c->errstr);
-        }
-        return;
-    }
-
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
-        return;
-    }
-    
-    y_start = 69;
-    y_end = 86;
-    if(0 == strcmp("0", ch)) {
-        x_start = 265;
-        x_end = 282;
-        ch = "关";
-    } else {
-        x_start = 281;
-        x_end = 298;
-        ch = "开";
-    }
-    
-    if(0 > draw_rectangle(265, 69, 298, 86, COLOR_BLUE)) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
-    }
-    
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, 16, ch)) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
-    }
-}
-
-/*
- * drawSW4StatusCallback is used to draw the value of
- * switch 4 in corresponding area. The design here is 
- * to put the value string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           Not used
- * 
- * Return value:
- * There is no return value
- */
-void drawSW4StatusCallback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
-
-    if (NULL == reply) {
-        if (c->errstr) {
-            LOG_ERROR("errstr: %s", c->errstr);
-        }
-        return;
-    }
-
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
-        return;
-    }
-    
-    y_start = 190;
-    y_end = 207;
-    if(0 == strcmp("0", ch)) {
-        x_start = 107;
-        x_end = 124;
-        ch = "关";
-    } else {
-        x_start = 123;
-        x_end = 140;
-        ch = "开";
-    }
-    
-    if(0 > draw_rectangle(107, 190, 140, 207, COLOR_BLUE)) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
-    }
-    
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, 16, ch)) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
-    }
-}
-
-/*
- * drawSW5StatusCallback is used to draw the value of
- * switch 5 in corresponding area. The design here is 
- * to put the value string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           Not used
- * 
- * Return value:
- * There is no return value
- */
-void drawSW5StatusCallback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
-
-    if (NULL == reply) {
-        if (c->errstr) {
-            LOG_ERROR("errstr: %s", c->errstr);
-        }
-        return;
-    }
-
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
-        return;
-    }
-    
-    y_start = 190;
-    y_end = 207;
-    if(0 == strcmp("0", ch)) {
-        x_start = 187;
-        x_end = 204;
-        ch = "关";
-    } else {
-        x_start = 203;
-        x_end = 220;
-        ch = "开";
-    }
-    
-    if(0 > draw_rectangle(187, 190, 220, 207, COLOR_BLUE)) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
-    }
-    
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, 16, ch)) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
-    }
-}
-
-/*
- * drawSW6StatusCallback is used to draw the value of
- * switch 6 in corresponding area. The design here is 
- * to put the value string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           Not used
- * 
- * Return value:
- * There is no return value
- */
-void drawSW6StatusCallback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
-
-    if (NULL == reply) {
-        if (c->errstr) {
-            LOG_ERROR("errstr: %s", c->errstr);
-        }
-        return;
-    }
-
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
-        return;
-    }
-    
-    y_start = 190;
-    y_end = 207;
-    if(0 == strcmp("0", ch)) {
-        x_start = 265;
-        x_end = 282;
-        ch = "关";
-    } else {
-        x_start = 281;
-        x_end = 298;
-        ch = "开";
-    }
-    
-    if(0 > draw_rectangle(265, 190, 298, 207, COLOR_BLUE)) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
-    }
-    
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, 16, ch)) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
-    }
-}
 
 /*
  * setBrightnessCallback is used to set the brightness
@@ -1502,13 +650,25 @@ void setBrightnessCallback(redisAsyncContext *c, void *r, void *privdata) {
         }
         return;
     }
+    
+    if(NULL != privdata) {
+        LOG_WARNING("Warning: setBrightnessCallback invalid priv data!");
+        return;
+    }
 
     if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
         ch = reply->element[2]->str;
     } else if(NULL != reply->str) {
         ch = reply->str;
     } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
+        LOG_WARNING("Warning: setBrightnessCallback does not have valid value!");
+        if(0 == reply->elements) {
+            LOG_DETAILS("Sting: %s", reply->str);
+        } else {
+            for(size_t i = 0; i < reply->elements; i++) {
+                LOG_DETAILS("Element %d: %s", i, reply->element[i]->str);
+            }
+        }
         return;
     }
     
@@ -1552,12 +712,24 @@ void exitCallback(redisAsyncContext *c, void *r, void *privdata) {
         return;
     }
 
+    if(NULL != privdata) {
+        LOG_WARNING("Warning: exitCallback invalid priv data!");
+        return;
+    }
+
     if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
         ch = reply->element[2]->str;
     } else if(NULL != reply->str) {
         ch = reply->str;
     } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
+        LOG_WARNING("Warning: exitCallback does not have valid value!");
+        if(0 == reply->elements) {
+            LOG_DETAILS("Sting: %s", reply->str);
+        } else {
+            for(size_t i = 0; i < reply->elements; i++) {
+                LOG_DETAILS("Element %d: %s", i, reply->element[i]->str);
+            }
+        }
         return;
     }
     
@@ -1590,12 +762,24 @@ void setLogLevelCallback(redisAsyncContext *c, void *r, void *privdata) {
         return;
     }
 
+    if(NULL != privdata) {
+        LOG_WARNING("Warning: setLogLevelCallback invalid priv data!");
+        return;
+    }
+
     if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
         ch = reply->element[2]->str;
     } else if(NULL != reply->str) {
         ch = reply->str;
     } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
+        LOG_WARNING("Warning: setLogLevelCallback does not have valid value!");
+        if(0 == reply->elements) {
+            LOG_DETAILS("Sting: %s", reply->str);
+        } else {
+            for(size_t i = 0; i < reply->elements; i++) {
+                LOG_DETAILS("Element %d: %s", i, reply->element[i]->str);
+            }
+        }
         return;
     }
     
@@ -1798,62 +982,63 @@ l_start:
 
     redisAsyncSetConnectCallback(gs_async_context,connectCallback);
     redisAsyncSetDisconnectCallback(gs_async_context,disconnectCallback);
+    
+    for(int i = 0; i < 4; i++) {
+        gettimeofday(&gs_sensor[i], NULL);
+    }
 
-    redisAsyncCommand(gs_async_context, drawSensor1NameCallback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SENSOR_1_NAME_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSensor2NameCallback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SENSOR_2_NAME_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSensor3NameCallback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SENSOR_3_NAME_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSensor4NameCallback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SENSOR_4_NAME_TOPIC);
+    for(int i = 0; i < 4; i++) {
+        LOG_DETAILS("GET %s/%s/%s%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i + 1);
+        redisAsyncCommand(gs_async_context, drawSensorNameCallback, &gs_idx_name[i], "GET %s/%s/%s/%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i + 1);
+    }
 
-    redisAsyncCommand(gs_async_context, drawSensor1Callback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SENSOR_1_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSensor2Callback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SENSOR_2_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSensor3Callback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SENSOR_3_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSensor4Callback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SENSOR_4_TOPIC);
+    for(int i = 0; i < 4; i++) {
+        LOG_DETAILS("GET %s/%s/%s%d", FLAG_KEY, serv_ip, SENSOR_TOPIC, i + 1);
+        redisAsyncCommand(gs_async_context, drawSensorCallback, &gs_idx_name[i], "GET %s/%s/%s%d", FLAG_KEY, serv_ip, SENSOR_TOPIC, i + 1);
+    }
 
+    LOG_DETAILS("GET %s/%s/%s", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC);
     redisAsyncCommand(gs_async_context, setBrightnessCallback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC);
+    
+    for(int i = 0; i < 6; i++) {
+        LOG_DETAILS("SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SW_NAME_TOPIC, i + 1);
+        redisAsyncCommand(gs_async_context, drawSWNameCallback, &gs_idx_name[i], "SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SW_NAME_TOPIC, i + 1);
+    }
 
-    redisAsyncCommand(gs_async_context, drawSW1NameCallback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SW_1_NAME_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW2NameCallback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SW_2_NAME_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW3NameCallback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SW_3_NAME_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW4NameCallback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SW_4_NAME_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW5NameCallback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SW_5_NAME_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW6NameCallback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SW_6_NAME_TOPIC);
+    for(int i = 0; i < 6; i++) {
+        LOG_DETAILS("SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SW_TOPIC, i + 1);
+        redisAsyncCommand(gs_async_context, drawSWStatusCallback, &gs_idx_name[i], "SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SW_TOPIC, i + 1);
+    }
+    
+    LOG_DETAILS("SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
+    redisAsyncCommand(gs_async_context, setLogLevelCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
 
-    redisAsyncCommand(gs_async_context, drawSW1StatusCallback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SW_1_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW2StatusCallback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SW_2_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW3StatusCallback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SW_3_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW4StatusCallback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SW_4_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW5StatusCallback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SW_5_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW6StatusCallback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, SW_6_TOPIC);
+    for(int i = 0; i < 4; i++) {
+        LOG_DETAILS("SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i + 1);
+        redisAsyncCommand(gs_async_context, drawSensorNameCallback, &gs_idx_name[i], "SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i + 1);
+    }
 
-    redisAsyncCommand(gs_async_context, setLogLevelCallback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
+    for(int i = 0; i < 4; i++) {
+        LOG_DETAILS("SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SENSOR_TOPIC, i + 1);
+        redisAsyncCommand(gs_async_context, drawSensorCallback, &gs_idx_name[i], "SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SENSOR_TOPIC, i + 1);
+    }
 
-    redisAsyncCommand(gs_async_context, drawSensor1NameCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SENSOR_1_NAME_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSensor2NameCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SENSOR_2_NAME_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSensor3NameCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SENSOR_3_NAME_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSensor4NameCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SENSOR_4_NAME_TOPIC);
-
-    redisAsyncCommand(gs_async_context, drawSensor1Callback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SENSOR_1_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSensor2Callback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SENSOR_2_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSensor3Callback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SENSOR_3_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSensor4Callback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SENSOR_4_TOPIC);
-
+    LOG_DETAILS("SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC);
     redisAsyncCommand(gs_async_context, setBrightnessCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC);
+    
+    for(int i = 0; i < 6; i++) {
+        LOG_DETAILS("SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SW_NAME_TOPIC, i + 1);
+        redisAsyncCommand(gs_async_context, drawSWNameCallback, &gs_idx_name[i], "SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SW_NAME_TOPIC, i + 1);
+    }
 
-    redisAsyncCommand(gs_async_context, drawSW1NameCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SW_1_NAME_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW2NameCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SW_2_NAME_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW3NameCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SW_3_NAME_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW4NameCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SW_4_NAME_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW5NameCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SW_5_NAME_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW6NameCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SW_6_NAME_TOPIC);
-
-    redisAsyncCommand(gs_async_context, drawSW1StatusCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SW_1_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW2StatusCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SW_2_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW3StatusCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SW_3_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW4StatusCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SW_4_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW5StatusCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SW_5_TOPIC);
-    redisAsyncCommand(gs_async_context, drawSW6StatusCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, SW_6_TOPIC);
-
+    for(int i = 0; i < 6; i++) {
+        LOG_DETAILS("SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SW_TOPIC, i + 1);
+        redisAsyncCommand(gs_async_context, drawSWStatusCallback, &gs_idx_name[i], "SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SW_TOPIC, i + 1);
+    }
+    
+    LOG_DETAILS("SUBSCRIBE %s/%s", FLAG_KEY, serv_ip);
     redisAsyncCommand(gs_async_context, exitCallback, NULL, "SUBSCRIBE %s/%s", FLAG_KEY, serv_ip);
+    LOG_DETAILS("SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
     redisAsyncCommand(gs_async_context, setLogLevelCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
 
     if(0 > draw_rectangle(0, 0, 319, 239, COLOR_BLUE)) {
@@ -1874,7 +1059,7 @@ l_start:
     if(0 > draw_line(163, 0, 163, 239, COLOR_WHITE)) {
         goto l_free_async_redis;
     }
-    if(0 > draw_line(241, 0, 241, 239, COLOR_WHITE)) {
+    if(0 > draw_line(242, 0, 242, 239, COLOR_WHITE)) {
         goto l_free_async_redis;
     }
 
