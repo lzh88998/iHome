@@ -88,19 +88,34 @@
 
 #define REDIS_MESSAGE_TYPE      "pmessage"
 #define FLAG_KEY                "cargador"
+
 #define EXIT_FLAG_VALUE         "exit"
+#define RESET_FLAG_VALUE        "reset"
 
 #define MAX_OUTPUT_PIN_COUNT    32
 
 #define TRUE                    1
 #define FALSE                   0
 
+
+static redisContext *gs_sync_context = NULL;
 static redisAsyncContext *gs_async_context = NULL;
 static to_socket_ctx gs_socket = -1;
 static int gs_exit = 0;
 
 #define CARGADOR_SND_RCV_ERROR      -1
 #define CARGADOR_SND_RCV_OK         0
+
+static const char* gs_idx_name[MAX_OUTPUT_PIN_COUNT] =  {
+                                                            "0", "1", "2", "3",
+                                                            "4", "5", "6", "7",
+                                                            "8", "9", "10", "11",
+                                                            "12", "13", "14", "15",
+                                                            "16", "17", "18", "19",
+                                                            "20", "21", "22", "23",
+                                                            "24", "25", "26", "27",
+                                                            "28", "29", "30", "31",
+                                                        };
 
 /*
  * Send the command to controller and receive feedback
@@ -147,53 +162,6 @@ int sendRecvCommand(long idx, const char* v) {
 }
 
 /*
- * During start phase, the cargador will get expected
- * status from redis and set the controller PINs to 
- * exptcted status
- * 
- * This callback function is used to do this task.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           The PIN index is passed in as a long integer
- *                          although this seems to be a pointer but will
- *                          force convert it to a long integer
- * 
- * Return value:
- * There is no return value
- * 
- * Note: When send/receive error occures, this service will terminate
- * itself and restart, so when send/recv error occur, it will disconnect
- * from redis and main function will restart trying to reconnect.
- * 
- */
-void getCallback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-    LOG_DEBUG("Get channel %ld callback!", (long)privdata);
-    if (reply == NULL) {
-        if (c->errstr) {
-            redisAsyncDisconnect(c);
-            LOG_ERROR("Get errstr: %s", c->errstr);
-        }
-        return;
-    }
-    
-    LOG_DETAILS("Get type: %d", reply->type);
-    LOG_DETAILS("Get result: %s", reply->str);
-    LOG_DETAILS("Get elements: %zd", reply->elements);
-    LOG_DETAILS("Get param: %ld", (long)privdata);
-    
-    if(NULL != reply->str) {
-        if(CARGADOR_SND_RCV_OK != sendRecvCommand((long)privdata, reply->str)) {
-            redisAsyncDisconnect(c);
-            return;
-        }
-    }
-    LOG_DEBUG("Get channel %ld callback finished!", (long)privdata);
-}
-
-/*
  * After start phase, the cargador will subscribe expected 
  * message channels to keep the controller's output PIN in
  * the expected status with value specified in redis.
@@ -224,73 +192,51 @@ void getCallback(redisAsyncContext *c, void *r, void *privdata) {
  */
 void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
+    char* ch = (char*)privdata;
+    
     LOG_DEBUG("Subscribe callback!");
     if (reply == NULL) {
+        LOG_ERROR("Error empty subscribed response!");
         if (c->errstr) {
             LOG_ERROR("Subscribe errstr: %s", c->errstr);
-            redisAsyncDisconnect(c);
         }
+        redisAsyncDisconnect(c);
         return;
     }
     
     LOG_DETAILS("Subscribe reply type: %d", reply->type);
     LOG_DETAILS("Subscribe reply elements: %zd", reply->elements);
-    switch(reply->type) {
-        case REDIS_REPLY_ARRAY: 
-            for(size_t i = 0; i < reply->elements; i++) {
-                LOG_DETAILS("Subscribe Array element %zd: %s", i, reply->element[i]->str);
-            }
-            
-            if(4 == reply->elements) { 
-                // subscribe element 0 is "pmessage", element 1 is key pattern element 2 is key element 3 is value string
-                if(NULL != reply->element[0] && NULL != reply->element[0]->str && 0 == strcmp(REDIS_MESSAGE_TYPE, reply->element[0]->str)) {
-                    if(NULL != reply->element[2] && NULL != reply->element[2]->str && NULL != reply->element[3] && NULL != reply->element[3]->str) {
-                        char *idx_start = strrchr(reply->element[2]->str, '/');
-                        if(NULL != idx_start) {
-                            ++idx_start; // move to next pos;
-                            if(0 == strcmp(EXIT_FLAG_VALUE, idx_start)) { // exit
-                                if(0 != strcmp("0", reply->element[3]->str)) {
-                                    LOG_DETAILS("Subscribe exit flag found!");
-                                    gs_exit = 1;
-                                    redisAsyncDisconnect(c);
-                                } else {
-                                    LOG_WARNING("Subscribe warning: Exit flag received iwht value %s!", reply->element[3]->str);
-                                }
-                            } else if(0 == strcmp(LOG_LEVEL_FLAG_VALUE, idx_start)) {
-                                LOG_DETAILS("Subscribe log level flag found!");
-                                if(0 > log_set_level(reply->element[3]->str)) {
-                                    LOG_ERROR("Invalid log option: %s", reply->element[3]->str);
-                                }
-                            } else {
-                                int idx = atoi(idx_start);
-                                if(idx >= 0 && idx < MAX_OUTPUT_PIN_COUNT) {
-                                    if(CARGADOR_SND_RCV_OK != sendRecvCommand(idx, reply->element[3]->str)) {
-                                        redisAsyncDisconnect(c);
-                                    }
-                                } else {
-                                    LOG_WARNING("Subscribe warning: Invalid input index %d!", idx);
-                                }
-                            }
-                        } else {
-                            LOG_ERROR("Subscribe error: Cannot find '/' in returned string!");
-                        }
-                    }
-                }
-            }
-        break;
-        case REDIS_REPLY_ERROR:
-        case REDIS_REPLY_VERB:
-        case REDIS_REPLY_STRING:
-        case REDIS_REPLY_BIGNUM:
-            LOG_DETAILS("Subscribe argv[%s]: %s", (char*)privdata, reply->str);
-        break;
-        case REDIS_REPLY_DOUBLE:
-            LOG_DETAILS("Subscribe Double %lf", reply->dval);
-        break;
-        case REDIS_REPLY_INTEGER:
-            LOG_DETAILS("Subscribe Integer %lld", reply->integer);
-        break;
+    LOG_DETAILS("Subscribe parameters: %s", ch);
+
+    if(3 != reply->elements) {
+        LOG_ERROR("Error: Unexpected format!");
+        redisAsyncDisconnect(c);
+        return;
+    }
+    
+    if(NULL == reply->element[2] || NULL == reply->element[2]->str) {
+        LOG_WARNING("Error: Empty content!");
+        return;
+    }
+    
+    if(0 == strcmp(EXIT_FLAG_VALUE, ch)) {
+        LOG_DETAILS("Subscribe exit flag found!");
+        gs_exit = 1;
+        redisAsyncDisconnect(c);
+    } else if(0 == strcmp(RESET_FLAG_VALUE, ch)) {
+        LOG_DETAILS("Subscribe reset flag found!");
+        redisAsyncDisconnect(c);
+    } else if(0 == strcmp(LOG_LEVEL_FLAG_VALUE, ch)) {
+        LOG_DETAILS("Subscribe log level flag found!");
+        if(0 > log_set_level(reply->element[2]->str)) {
+            LOG_ERROR("Invalid log option: %s", reply->element[2]->str);
         }
+    } else {
+        if(CARGADOR_SND_RCV_OK != sendRecvCommand(atoi(ch), reply->element[2]->str)) {
+            LOG_ERROR("Error: failed to update status for PIN %d, %s", atoi(ch), reply->element[2]->str);
+            redisAsyncDisconnect(c);
+        }
+    }
 
     LOG_DEBUG("Subscribe finished!");
 }
@@ -476,6 +422,27 @@ l_start:
     
     LOG_INFO("Connected to controller, remote socket: %d", temp);
     
+    gs_sync_context = redisConnectWithTimeout(redis_ip, redis_port, timeout);
+    if(NULL == gs_sync_context) {
+        LOG_ERROR("Connection error: can't allocate redis context");
+        goto l_exit;
+    }
+    
+    if(gs_sync_context->err) {
+        LOG_ERROR("Connection error: %s", gs_sync_context->errstr);
+        goto l_free_sync_redis;
+    }
+
+    redisReply* reply = redisCommand(gs_sync_context,"PING");
+    if(NULL == reply) {
+        LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+        goto l_free_sync_redis;
+    }
+    LOG_DEBUG("PING: %s", reply->str);
+    freeReplyObject(reply);
+
+    LOG_INFO("Connected to redis in sync mode");
+    
     base = event_base_new();
     redisOptions options = {0};
     REDIS_OPTIONS_SET_TCP(&options, redis_ip, redis_port);
@@ -492,24 +459,86 @@ l_start:
         goto l_free_async_redis;
     }
 
+    LOG_INFO("Connected to redis in async mode");
+
     redisAsyncSetConnectCallback(gs_async_context,connectCallback);
     redisAsyncSetDisconnectCallback(gs_async_context,disconnectCallback);
+    
+    LOG_DETAILS("GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
+    reply = redisCommand(gs_sync_context,"GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
 
-    for(long i = 0; i < 32; i++) { // apply current status to controller
-        redisAsyncCommand(gs_async_context, getCallback, (void*)i, "GET %s/%s/%d", FLAG_KEY, serv_ip, i);
+    if(NULL == reply) {
+        LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+        goto l_free_async_redis;
+    }
+    
+    if(0 > log_set_level(reply->str)) {
+        LOG_WARNING("Failed to set log level %s", reply->str);
     }
 
-    redisAsyncCommand(gs_async_context, subscribeCallback, NULL, "PSUBSCRIBE %s/%s/*", FLAG_KEY, serv_ip);
+    freeReplyObject(reply);
+
+    for(int i = 0; i < MAX_OUTPUT_PIN_COUNT; i++ ) {
+        LOG_DETAILS("HGET %s/%s %d", FLAG_KEY, serv_ip, i);
+        reply = redisCommand(gs_sync_context,"HGET %s/%s %d", FLAG_KEY, serv_ip, i);
+        if(NULL == reply) {
+            LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+            goto l_free_async_redis;
+        }
+        
+        LOG_DETAILS("HGET Result: %s", reply->str);
+        
+        if(NULL != reply->str) {
+            LOG_DETAILS("GET %s", reply->str);
+            redisReply* reply2 = redisCommand(gs_sync_context,"GET %s", reply->str);
+            
+            if(NULL == reply2) {
+                LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+                freeReplyObject(reply);
+                goto l_free_async_redis;
+            }
+            
+            LOG_DETAILS("GET %s", reply2->str);
+            
+            if(CARGADOR_SND_RCV_OK != sendRecvCommand(i, reply2->str)) {
+                LOG_ERROR("Error updating controller status");
+                freeReplyObject(reply);
+                freeReplyObject(reply2);
+                goto l_free_async_redis;
+            }
+            
+            LOG_DETAILS("SUBSCRIBE %s", reply->str);
+            redisAsyncCommand(gs_async_context, subscribeCallback, (void*)gs_idx_name[i], "SUBSCRIBE %s", reply->str);
+            freeReplyObject(reply2);
+        }
+        
+        freeReplyObject(reply);
+    }
+
+    redisFree(gs_sync_context);
+    gs_sync_context = NULL;
+    
+    redisAsyncCommand(gs_async_context, subscribeCallback, (void*)EXIT_FLAG_VALUE, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, EXIT_FLAG_VALUE);
+    redisAsyncCommand(gs_async_context, subscribeCallback, (void*)RESET_FLAG_VALUE, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, RESET_FLAG_VALUE);
+    redisAsyncCommand(gs_async_context, subscribeCallback, (void*)LOG_LEVEL_FLAG_VALUE, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
+    
     event_base_dispatch(base);
     
 l_free_async_redis:
     redisAsyncFree(gs_async_context);
     event_base_free(base);
     
+l_free_sync_redis:
+    if(NULL != gs_sync_context) {
+        redisFree(gs_sync_context);
+        gs_sync_context = NULL;
+    }
+    
 l_socket_cleanup:
     to_close(gs_socket);
     gs_socket = -1;
 
+l_exit:
     if(!gs_exit) {    
         LOG_ERROR("Execution failed retry!");
         goto l_start;

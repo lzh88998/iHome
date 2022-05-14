@@ -74,12 +74,11 @@ void print_usage(int argc, char **argv) {
     }
     printf("Invalid input parameters!\n");
     printf("Usage: (<optional parameters>)\n");
-    printf("%s controller_ip controller_port <log level> <redis_ip> <redis_port>\n", argv[0]);
+    printf("%s <redis_ip> <redis_port> <log level>\n", argv[0]);
     printf("E.g.:\n");
-    printf("%s 192.168.100.100 5000\n\n", argv[0]);
+    printf("%s debug\n", argv[0]);
+    printf("%s 192.168.100.100 5000\n", argv[0]);
     printf("%s 192.168.100.100 5000 debug\n\n", argv[0]);
-    printf("%s 192.168.100.100 5000 127.0.0.1 6379\n\n", argv[0]);
-    printf("%s 192.168.100.100 5000 debug 127.0.0.1 6379\n\n", argv[0]);
 }
 
 /*
@@ -237,8 +236,8 @@ l_start:
                 print_usage(argc, argv);
                 return -3;
             }
-            redis_ip = REDIS_IP;
-            redis_port = REDIS_PORT;
+            redis_ip = argv[1];
+            redis_port = atoi(argv[2]);
             break;
         default:
             print_usage(argc, argv);
@@ -307,13 +306,13 @@ l_start:
 
     event_base_dispatch(base);
     
-l_free_sync_redis:
-    redisFree(gs_sync_context);
-    
 l_free_async_redis:
     redisAsyncFree(gs_async_context);
     event_base_free(base);
  
+l_free_sync_redis:
+    redisFree(gs_sync_context);
+    
 l_exit:
     if(!gs_exit) {    
         LOG_ERROR("Godown_keeper execution failed retry!");

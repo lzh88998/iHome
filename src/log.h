@@ -41,6 +41,8 @@
 #define LOG_LEVEL_DEBUG				3
 #define LOG_LEVEL_DETAILES			4
 
+#define UNUSED(x)					(void)(x)
+
 /*
  * Parse the input string and convert it to an internal
  * numberical value and store it as current log level
