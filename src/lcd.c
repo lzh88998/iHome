@@ -200,7 +200,7 @@ int draw_string(unsigned int x_start, unsigned int y_start, unsigned int x_end, 
     int converted_cnt = 0;
     va_list ap;
     va_start(ap, fmt);
-    LOG_DETAILS("Print");
+    LOG_DETAILS("draw_string");
     ret = vsprintf(input_buffer, fmt, ap);
     va_end(ap);
     
@@ -343,13 +343,19 @@ int draw_line(unsigned int x_start, unsigned int y_start, unsigned int x_end, un
     bytes[9] = ((color >> 8) & 0xFF);
     bytes[10] = (color & 0xFF);
     
+    LOG_DEBUG("Draw line send!");
     ret = to_send(gs_socket, bytes, 11, 0);
     if(0 > ret) {
+        LOG_ERROR("Draw line failed send! %s", strerror(errno));
         return ret;
     }
     
     ret = to_recv(gs_socket, bytes, 1, 0);
     
+    if(0 > ret) {
+        LOG_ERROR("Draw line failed receive! %s", strerror(errno));
+    }
+
     return ret;
 }
 
@@ -375,7 +381,9 @@ int draw_sensor_name(unsigned char index, char* value) {
     x_start = 2;
     x_end = 82;
     y_start = 60 * index + 6;
-    y_end = 60 * index * 60 + 31;
+    y_end = index * 60 + 31;
+
+    LOG_DETAILS("Sensor name location: %d %d %d %d", x_start, y_start, x_end, y_end);
 
     // erase target area
     ret = draw_rectangle(x_start, y_start, x_end, y_end, BACKGROUND_COLOR);
@@ -462,7 +470,9 @@ int draw_sensor(unsigned char index, char* value) {
     x_start = 2;
     x_end = 82;
     y_start = 60 * index + 34;
-    y_end = 60 * index * 60 + 59;
+    y_end = index * 60 + 59;
+    
+    LOG_DETAILS("Sensor location: %d %d %d %d", x_start, y_start, x_end, y_end);
 
     // erase target area
     ret = draw_rectangle(x_start, y_start, x_end, y_end, BACKGROUND_COLOR);
@@ -1113,8 +1123,10 @@ l_start:
         goto l_free_async_redis;
     }
     
-    if(LOG_SET_LEVEL_OK != log_set_level(reply->str)) {
-        LOG_WARNING("Failed to set log level %s", reply->str);
+    if(NULL != reply->str) {
+        if(LOG_SET_LEVEL_OK != log_set_level(reply->str)) {
+            LOG_WARNING("Failed to set log level %s", reply->str);
+        }
     }
 
     freeReplyObject(reply);
@@ -1148,6 +1160,29 @@ l_start:
         gettimeofday(&gs_sensor[i], NULL);
     }
 
+    // draw grids
+    if(0 > draw_rectangle(0, 0, 319, 239, COLOR_BLUE)) {
+        goto l_free_async_redis;
+    }
+    if(0 > draw_line(0, 60, 84, 60, COLOR_WHITE)) {
+        goto l_free_async_redis;
+    }
+    if(0 > draw_line(0, 120, 319, 120, COLOR_WHITE)) {
+        goto l_free_async_redis;
+    }
+    if(0 > draw_line(0, 180, 84, 180, COLOR_WHITE)) {
+        goto l_free_async_redis;
+    }
+    if(0 > draw_line(84, 0, 84, 239, COLOR_WHITE)) {
+        goto l_free_async_redis;
+    }
+    if(0 > draw_line(163, 0, 163, 239, COLOR_WHITE)) {
+        goto l_free_async_redis;
+    }
+    if(0 > draw_line(242, 0, 242, 239, COLOR_WHITE)) {
+        goto l_free_async_redis;
+    }
+
     // Initialize sensor
     for(int i = 0; i < 4; i++) {
         LOG_DETAILS("HGET %s/%s %s%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i);
@@ -1159,24 +1194,14 @@ l_start:
         }
         
         if(NULL != reply->str) {
-            redisReply* reply2 = redisCommand(sync_context,"GET %s", reply->str);
-            
-            if(NULL == reply2) {
-                LOG_ERROR("Failed to sync query redis sensor name topic %s", sync_context->errstr);
+            LOG_DETAILS("Get sensor name %s", reply->str);
+            if(0 > draw_sensor_name(i, reply->str)) {
+                LOG_ERROR("Failed to draw sensor name %d", i);
                 goto l_free_async_redis;
             }
-            
-            if(NULL != reply2->str) {
-                if(0 > draw_sensor_name(i, reply2->str)) {
-                    LOG_ERROR("Failed to draw sensor name %d", i);
-                    freeReplyObject(reply2);
-                    goto l_free_async_redis;
-                }
-            }
-            
-            freeReplyObject(reply2);
 
-            redisAsyncCommand(gs_async_context, drawSensorNameCallback, &gs_idx_name[i], "SUBSCRIBE %s", reply->str);
+            LOG_DETAILS("SUBSCRIBE %s/%s %s%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i);
+            redisAsyncCommand(gs_async_context, drawSensorNameCallback, &gs_idx_name[i], "SUBSCRIBE %s/%s %s%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i);
         }
         
         freeReplyObject(reply);
@@ -1245,22 +1270,10 @@ l_start:
         }
         
         if(NULL != reply->str) {
-            redisReply* reply2 = redisCommand(sync_context,"GET %s", reply->str);
-            
-            if(NULL == reply2) {
-                LOG_ERROR("Failed to sync query redis switch name topic %s", sync_context->errstr);
+            if(0 > draw_sw_name(i, reply->str)) {
+                LOG_ERROR("Failed to draw sensor name %d", i);
                 goto l_free_async_redis;
             }
-            
-            if(NULL != reply2->str) {
-                if(0 > draw_sw_name(i, reply2->str)) {
-                    LOG_ERROR("Failed to draw sensor name %d", i);
-                    freeReplyObject(reply2);
-                    goto l_free_async_redis;
-                }
-            }
-            
-            freeReplyObject(reply2);
 
             redisAsyncCommand(gs_async_context, drawSWNameCallback, &gs_idx_name[i], "SUBSCRIBE %s", reply->str);
         }
@@ -1306,29 +1319,6 @@ l_start:
     redisAsyncCommand(gs_async_context, resetCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, RESET_FLAG_VALUE);
     LOG_DETAILS("SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
     redisAsyncCommand(gs_async_context, setLogLevelCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
-
-    // draw grids
-    if(0 > draw_rectangle(0, 0, 319, 239, COLOR_BLUE)) {
-        goto l_free_async_redis;
-    }
-    if(0 > draw_line(0, 60, 84, 60, COLOR_WHITE)) {
-        goto l_free_async_redis;
-    }
-    if(0 > draw_line(0, 120, 319, 120, COLOR_WHITE)) {
-        goto l_free_async_redis;
-    }
-    if(0 > draw_line(0, 180, 84, 180, COLOR_WHITE)) {
-        goto l_free_async_redis;
-    }
-    if(0 > draw_line(84, 0, 84, 239, COLOR_WHITE)) {
-        goto l_free_async_redis;
-    }
-    if(0 > draw_line(163, 0, 163, 239, COLOR_WHITE)) {
-        goto l_free_async_redis;
-    }
-    if(0 > draw_line(242, 0, 242, 239, COLOR_WHITE)) {
-        goto l_free_async_redis;
-    }
 
     event_base_dispatch(base);
         
