@@ -152,7 +152,7 @@ l_start:
     gs_socket = to_connect(serv_ip, serv_port);
     if(-1 == gs_socket) {
         LOG_ERROR("Error connecting to controller!\n");
-        goto l_start;
+        goto l_socket_cleanup;
     }
     
  /* 

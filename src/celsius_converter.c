@@ -1,25 +1,11 @@
 /*
  * Copyright lzh88998 and distributed under Apache 2.0 license
  * 
- * touch is a micro service that receive the touch information
- * from touch panel and perform cache and translate the received
- * information then publish to redis channel.
- * 
- * Due to the touch pad can return data points in a very fast
- * manner (several data points per second) and may cause some
- * trouble for controller, so touch will cache and aggregate
- * the message for a period of MSG_INTERVAL_MS.
- * 
- * The translation rule is as following:
- * If last message have been sent out for at least 
- * MSG_INTERVAL_MS, then current message will be sent out
- * immediately. Otherwise, modify the behavior according to
- * previous and current behavior. for example if last one
- * is click and current is move, then the whole message 
- * will be translate to click and update to latest position.
- * if last message is move and current is click up, then
- * update the behavior as click up. if last message is click
- * up and current is click down, then update to move.
+ * celsius_converter is a micro service that receive sensor
+ * value from configured channel and convert the received
+ * value to a celsius temperature value and publish to 
+ * a new channel which has a name of original channel with
+ * postfix of VALUE_KEY
  * 
  */
 
@@ -38,17 +24,42 @@
 
 #include "log.h"
 
+/*
+ * Default address and port for redis 
+ * connection
+ */
 #define REDIS_IP                "127.0.0.1"
 #define REDIS_PORT              6379
 
-#define FLAG_KEY                "temp_sync"
-#define EXIT_FLAG_VALUE         "exit"
+/*
+ * Identifier used in redis keys for this
+ * micro service
+ */
+#define FLAG_KEY                "celsius_converter"
 
-#define MSG_INTERVAL_MS         300
+/*
+ * Postfix used for storing converted
+ * celsius temperature
+ */
+#define VALUE_KEY               "\xE6\x91\x84\xE6\xB0\x8F\xE5\xBA\xA6"
 
+/*
+ * Celsius temperature sign used as
+ * postfix of the value
+ */
+#define UNIT_KEY                "\xE2\x84\x83"
+
+/*
+ * Context for redis connection 
+ */
 static redisContext *gs_sync_context = NULL;
 static redisAsyncContext *gs_async_context = NULL;
 
+/*
+ * Flag for micro srevice exit event, when set 
+ * to 1 the micro service will not restart
+ * automatically, but exit
+ */
 static int gs_exit = 0;
 
 /*
@@ -98,10 +109,9 @@ void print_usage(int argc, char **argv) {
     printf("Usage: (<optional parameters>)\n");
     printf("%s controller_ip controller_port <log level> <redis_ip> <redis_port>\n", argv[0]);
     printf("E.g.:\n");
-    printf("%s 192.168.100.100 5000\n\n", argv[0]);
-    printf("%s 192.168.100.100 5000 debug\n\n", argv[0]);
-    printf("%s 192.168.100.100 5000 127.0.0.1 6379\n\n", argv[0]);
-    printf("%s 192.168.100.100 5000 debug 127.0.0.1 6379\n\n", argv[0]);
+    printf("%s debug\n", argv[0]);
+    printf("%s 192.168.100.100 5000\n", argv[0]);
+    printf("%s 192.168.100.100 5000 debug\n", argv[0]);
 }
 
 /*
@@ -151,8 +161,7 @@ void disconnectCallback(const redisAsyncContext *c, int status) {
 }
 
 /*
- * subscribeCallback is used to process
- * click event
+ * exitCallback is used to process exit notification
  * 
  * Parameters:
  * redisAsyncContext *c     Connection context to redis
@@ -162,13 +171,85 @@ void disconnectCallback(const redisAsyncContext *c, int status) {
  * Return value:
  * There is no return value
  */
-void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
+void exitCallback(redisAsyncContext *c, void *r, void *privdata) {
+    UNUSED(privdata);
+
     redisReply *reply = r;
-    if(NULL != privdata) {
-        LOG_ERROR("Invalid priv data! %s", (char*)privdata);
-        redisAsyncDisconnect(c);
+
+    if (reply == NULL) {
+        if (c->errstr) {
+            LOG_ERROR("errstr: %n", c->errstr);
+            redisAsyncDisconnect(c);
+        }
         return;
     }
+    
+    LOG_DETAILS("sub reply type: %d", reply->type);
+    LOG_DETAILS("sub reply element count: %d", reply->elements);
+
+    if(3 == reply->elements && reply->element[1] && reply->element[1]->str && reply->element[2] && reply->element[2]->str) {
+        if(0 == strcmp(EXIT_FLAG_VALUE, reply->element[2]->str)) { 
+            gs_exit = 1;
+            redisAsyncDisconnect(c);
+        }
+    }
+
+    LOG_DEBUG("Exit finished!\n");
+}
+
+/*
+ * resetCallback is used to process reset notification
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           Not used
+ * 
+ * Return value:
+ * There is no return value
+ */
+void resetCallback(redisAsyncContext *c, void *r, void *privdata) {
+    UNUSED(privdata);
+
+    redisReply *reply = r;
+
+    if (reply == NULL) {
+        if (c->errstr) {
+            LOG_ERROR("errstr: %n", c->errstr);
+            redisAsyncDisconnect(c);
+        }
+        return;
+    }
+    
+    LOG_DETAILS("sub reply type: %d", reply->type);
+    LOG_DETAILS("sub reply element count: %d", reply->elements);
+
+    if(3 == reply->elements && reply->element[1] && reply->element[1]->str && reply->element[2] && reply->element[2]->str) {
+        if(0 == strcmp(RESET_FLAG_VALUE, reply->element[2]->str)) { 
+            redisAsyncDisconnect(c);
+        }
+    }
+    
+    LOG_DEBUG("Reset finished!\n");
+}
+
+/*
+ * setLogLevelCallback is used to dynamically update
+ * logging levels of standard output. This is helpful
+ * when debugging the application.
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           Not used
+ * 
+ * Return value:
+ * There is no return value
+ */
+void setLogLevelCallback(redisAsyncContext *c, void *r, void *privdata) {
+    UNUSED(privdata);
+
+    redisReply *reply = r;
     
     if (reply == NULL) {
         if (c->errstr) {
@@ -182,37 +263,79 @@ void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
     LOG_DETAILS("sub reply element count: %d", reply->elements);
 
     if(3 == reply->elements && reply->element[1] && reply->element[1]->str && reply->element[2] && reply->element[2]->str) { 
-        // 1 is message, 2 is key, 3 is value
-        LOG_DETAILS("HGET %s", FLAG_KEY);
-        redisReply *sync_reply = redisCommand(gs_sync_context,"HGET %s %s", FLAG_KEY, reply->element[1]->str);
-        if(NULL == sync_reply) {
-            LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
-            redisAsyncDisconnect(c);
-            return;
-        }
-
-        LOG_DETAILS("PUBLISH %s %s", FLAG_KEY, sync_reply->str, reply->element[2]->str);
-        redisReply *sync_reply2 = redisCommand(gs_sync_context,"PUBLISH %s %.1f\xE2\x84\x83", sync_reply->str, convert_temp(atoi(reply->element[2]->str) & 0xFF));
-        if(NULL == sync_reply2) {
-            LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
-            freeReplyObject(sync_reply);   
-            redisAsyncDisconnect(c);
-            return;
-        }
-
-        freeReplyObject(sync_reply2);   
-        freeReplyObject(sync_reply);   
+        if(LOG_SET_LEVEL_OK != log_set_level(reply->element[2]->str)) {
+            LOG_WARNING("Invalid log option: %s", reply->element[2]->str);
+        } 
     }
 
-    LOG_DEBUG("subscribe finished!\n");
+    LOG_DEBUG("Set log level finished!\n");
+}
+
+/*
+ * subscribeCallback is used to temperature sensor
+ * value change event
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           Not used
+ * 
+ * Return value:
+ * There is no return value
+ */
+void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
+    UNUSED(privdata);
+
+    redisReply *reply = r;
+    
+    if (reply == NULL) {
+        if (c->errstr) {
+            LOG_ERROR("errstr: %n", c->errstr);
+            redisAsyncDisconnect(c);
+        }
+        return;
+    }
+    
+    LOG_DETAILS("sub reply type: %d", reply->type);
+    LOG_DETAILS("sub reply element count: %d", reply->elements);
+
+    if(3 != reply->elements) {
+        LOG_ERROR("Error: Unexpected format!");
+        redisAsyncDisconnect(c);
+        return;
+    }
+    
+    if(NULL == reply->element[2] || NULL == reply->element[2]->str) {
+        LOG_WARNING("Error: Empty content!");
+        return;
+    }
+
+    float value = convert_temp(atoi(reply->element[2]->str) & 0xFF);
+
+    LOG_DETAILS("PUBLISH %s/%s %.1f%s", reply->element[1]->str, VALUE_KEY, value, UNIT_KEY);
+
+    redisReply *sync_reply = redisCommand(gs_sync_context,"PUBLISH %s/%s %.1f%s", reply->element[1]->str, VALUE_KEY, value, UNIT_KEY);
+    if(NULL == sync_reply) {
+        LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+        redisAsyncDisconnect(c);
+    } else {
+        freeReplyObject(sync_reply); 
+    }  
+
+    LOG_DEBUG("Subscribe finished!\n");
 }
 
 /*
  * Main entry of the service. It will first connect
- * to touch controller, and then connect to redis
- * through a sync connection. When received message
- * from touch controller, the data will be sent to
- * redis through the sync connectoin
+ * to redis through a sync connection. And then 
+ * connect to redis through a async connection
+ * and subscribe channels that configured in redis
+ * Sets named of FLAG_KEY.
+ * 
+ * When received message from redis channel, these
+ * data will be processed by subscribeCallback
+ * funcation. And converted data will be send back
+ * to redis through sync connection
  * 
  * Parameters:
  * int argc                 Number of input parameters, same function 
@@ -259,8 +382,8 @@ l_start:
                 print_usage(argc, argv);
                 return -3;
             }
-            redis_ip = REDIS_IP;
-            redis_port = REDIS_PORT;
+            redis_ip = argv[1];
+            redis_port = atoi(argv[2]);
             break;
         default:
             print_usage(argc, argv);
@@ -304,8 +427,22 @@ l_start:
     redisAsyncSetConnectCallback(gs_async_context,connectCallback);
     redisAsyncSetDisconnectCallback(gs_async_context,disconnectCallback);
 
+    LOG_DETAILS("GET %s/%s", FLAG_KEY, LOG_LEVEL_FLAG_VALUE);
+    reply = redisCommand(sync_context,"GET %s/%s", FLAG_KEY, LOG_LEVEL_FLAG_VALUE);
+
+    if(NULL == reply) {
+        LOG_ERROR("Failed to sync query redis %s", sync_context->errstr);
+        goto l_free_async_redis;
+    }
+    
+    if(0 > log_set_level(reply->str)) {
+        LOG_WARNING("Failed to set log level %s", reply->str);
+    }
+
+    freeReplyObject(reply);
+
     LOG_DETAILS("HGETALL %s", FLAG_KEY);
-    reply = redisCommand(gs_sync_context,"HGETALL %s", FLAG_KEY);
+    reply = redisCommand(gs_sync_context,"SMEMBERS %s", FLAG_KEY);
     if(NULL == reply) {
         LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
         goto l_free_sync_redis;
@@ -315,27 +452,27 @@ l_start:
     LOG_DETAILS("%s", reply->str);
     
     for(size_t i = 0; i < reply->elements; i++) {
+        LOG_DETAILS("Item %ld: %s", i, reply->element[i]);
         if(NULL != reply->element[i] && NULL != reply->element[i]->str) {
-            LOG_DETAILS("Item %ld: %s", i, reply->element[i]->str);
-            if(0 == (i % 2)) {
-                // key
-                redisAsyncCommand(gs_async_context, subscribeCallback, NULL, "SUBSCRIBE %s", reply->element[i]->str);
-            } else {
-                // value
-            }
+            LOG_DETAILS("Item %ld content: %s", i, reply->element[i]->str);
+            redisAsyncCommand(gs_async_context, subscribeCallback, NULL, "SUBSCRIBE %s", reply->element[i]->str);
         }
     }
     freeReplyObject(reply);   
 
-    event_base_dispatch(base);
+    redisAsyncCommand(gs_async_context, resetCallback, NULL, "SUBSCRIBE %s/%s", FLAG_KEY, RESET_FLAG_VALUE);
+    redisAsyncCommand(gs_async_context, exitCallback, NULL, "SUBSCRIBE %s/%s", FLAG_KEY, EXIT_FLAG_VALUE);
+    redisAsyncCommand(gs_async_context, setLogLevelCallback, NULL, "SUBSCRIBE %s/%s", FLAG_KEY, LOG_LEVEL_FLAG_VALUE);
     
-l_free_sync_redis:
-    redisFree(gs_sync_context);
+    event_base_dispatch(base);
     
 l_free_async_redis:
     redisAsyncFree(gs_async_context);
     event_base_free(base);
  
+l_free_sync_redis:
+    redisFree(gs_sync_context);
+    
 l_exit:
     if(!gs_exit) {    
         LOG_ERROR("Godown_keeper execution failed retry!");

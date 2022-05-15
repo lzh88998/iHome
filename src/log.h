@@ -11,12 +11,12 @@
 
 #include <stdio.h>
 #include <unistd.h>
+
 /*
- * To ensure consistent experience of different
- * micro services, this value is defined in log.h but it is
- * not used in log.c
+ * Return value for log_set_level
  */
-#define LOG_LEVEL_FLAG_VALUE    	"log_level"
+#define	LOG_SET_LEVEL_OK			0
+#define LOG_SET_LEVEL_INVALID		-1 
 
 /*
  * Valid log level names. These values are used in the
@@ -26,10 +26,10 @@
  * Here use string is for easier parsing from command line.
  */
 #define LOG_LEVEL_ERROR_NAME		"error"
-#define LOG_LEVEL_ERROR_WARNING		"warning"
-#define LOG_LEVEL_ERROR_INFO		"info"
-#define LOG_LEVEL_ERROR_DEBUG		"debug"
-#define LOG_LEVEL_ERROR_DETAILS		"details"
+#define LOG_LEVEL_WARNING_NAME		"warning"
+#define LOG_LEVEL_INFO_NAME			"info"
+#define LOG_LEVEL_DEBUG_NAME		"debug"
+#define LOG_LEVEL_DETAILS_NAME		"details"
 
 /*
  * Numberical values for different log values. lower value
@@ -41,7 +41,44 @@
 #define LOG_LEVEL_DEBUG				3
 #define LOG_LEVEL_DETAILES			4
 
+/*
+ * Common used to eleminate warning about unused
+ * parameters
+ */
 #define UNUSED(x)					(void)(x)
+
+/*
+ * To ensure consistent experience of different
+ * micro services, this value is defined in log.h 
+ * but it is not used in log.c
+ * 
+ * This value is subscribed by each micro service.
+ * When the message is received, then the micro
+ * service will exit
+ */
+#define EXIT_FLAG_VALUE         "exit"
+
+/*
+ * To ensure consistent experience of different
+ * micro services, this value is defined in log.h 
+ * but it is not used in log.c
+ * 
+ * This value is subscribed by each micro service.
+ * When the message is received, then the micro
+ * service will restart
+ */
+#define RESET_FLAG_VALUE        "reset"
+
+/*
+ * To ensure consistent experience of different
+ * micro services, this value is defined in log.h 
+ * but it is not used in log.c
+ * 
+ * This value is subscribed by each micro service
+ * to control the log level. Valid log levels can
+ * refer to LOG_LEVEL_*
+ */
+#define LOG_LEVEL_FLAG_VALUE    	"log_level"
 
 /*
  * Parse the input string and convert it to an internal

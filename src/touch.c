@@ -166,7 +166,7 @@ l_start:
     gs_socket = to_connect(serv_ip, serv_port);
     if(0 > gs_socket) {
         LOG_ERROR("Error creating socket!");
-        goto l_start;
+        goto l_socket_cleanup;
     }
     
 /*  

@@ -22,21 +22,21 @@ static int gs_log_level = LOG_LEVEL_ERROR;
 int log_set_level(const char* level) {
     if(0 == strcmp(LOG_LEVEL_ERROR_NAME, level))
 	gs_log_level = LOG_LEVEL_ERROR;
-    else if(0 == strcmp(LOG_LEVEL_ERROR_WARNING, level))
+    else if(0 == strcmp(LOG_LEVEL_WARNING_NAME, level))
 	gs_log_level = LOG_LEVEL_WARNING;
-    else if(0 == strcmp(LOG_LEVEL_ERROR_INFO, level))
+    else if(0 == strcmp(LOG_LEVEL_INFO_NAME, level))
 	gs_log_level = LOG_LEVEL_INFO;
-    else if(0 == strcmp(LOG_LEVEL_ERROR_DEBUG, level))
+    else if(0 == strcmp(LOG_LEVEL_DEBUG_NAME, level))
 	gs_log_level = LOG_LEVEL_DEBUG;
-    else if(0 == strcmp(LOG_LEVEL_ERROR_DETAILS, level))
+    else if(0 == strcmp(LOG_LEVEL_DETAILS_NAME, level))
 	gs_log_level = LOG_LEVEL_DETAILES;
     else {
 	printf("Invalid log level %s\r\n", level);
-	return -1;
+	return LOG_SET_LEVEL_INVALID;
     }
 	
     printf("Log level set to %s value %d\r\n", level, gs_log_level);
-    return 0;
+    return LOG_SET_LEVEL_OK;
 }
 
 /*
@@ -48,10 +48,10 @@ int log_set_level(const char* level) {
 void log_print_level_info(void) {
     printf("Valid log leves are: \r\n");
     printf("%s\tOnly show error messages. \r\n", LOG_LEVEL_ERROR_NAME);
-    printf("%s\tShow warning and error messages. \r\n", LOG_LEVEL_ERROR_WARNING);
-    printf("%s\tShow information, warning and error. \r\n", LOG_LEVEL_ERROR_INFO);
-    printf("%s\tShow debug, information, warning and error. \r\n", LOG_LEVEL_ERROR_DEBUG);
-    printf("%s\tShow all messages. \r\n", LOG_LEVEL_ERROR_DETAILS);
+    printf("%s\tShow warning and error messages. \r\n", LOG_LEVEL_WARNING_NAME);
+    printf("%s\tShow information, warning and error. \r\n", LOG_LEVEL_INFO_NAME);
+    printf("%s\tShow debug, information, warning and error. \r\n", LOG_LEVEL_DEBUG_NAME);
+    printf("%s\tShow all messages. \r\n", LOG_LEVEL_DETAILS_NAME);
 }
 
 /*

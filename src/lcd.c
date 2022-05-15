@@ -21,45 +21,94 @@
 #include "log.h"
 #include "to_socket.h"
 
+/*
+ * Default address and port for redis 
+ * connection
+ */
 #define REDIS_IP                    "127.0.0.1"
 #define REDIS_PORT                  6379
 
+/*
+ * Color constant used to draw things
+ * on lcd
+ */
 #define COLOR_RED                   0xF800
 #define COLOR_GREEN                 0x07E0
 #define COLOR_BLUE                  0x001F
 #define COLOR_WHITE                 0xFFFF
 #define COLOR_BLACK                 0x0000
 
+/*
+ * Here define the background color of
+ * lcd this makes change the background
+ * easier
+ */
+#define BACKGROUND_COLOR            COLOR_BLUE
+
+/*
+ * Return value for sending command to lcd
+ */
 #define SND_RCV_OK                  0;
 
+/*
+ * Due to the limit of lcd refresh rate,
+ * sensor values can not be updated in 
+ * very short time, update happens only
+ * when last update happens greater than 
+ * this interval value
+ */
 #define SENSOR_VALUE_INTERVAL_MS    1500
 
+/*
+ * Identifier used in redis keys for this
+ * micro service
+ */
 #define FLAG_KEY                    "lcd"
-#define EXIT_FLAG_VALUE             "exit"
 
-#define SENSOR_NAME_TOPIC           "sensorname"
-
-#define SENSOR_TOPIC                "sensor"
-
+/*
+ * Configuration items in redis hash
+ */
+#define SENSOR_NAME_TOPIC           "sensor_name_"
+#define SENSOR_TOPIC                "sensor_"
 #define BRIGHTNESS_TOPIC            "brightness"
+#define SW_NAME_TOPIC               "switch_name_"
+#define SW_TOPIC                    "switch_"
 
-#define SW_NAME_TOPIC               "swname"
-
-#define SW_TOPIC                    "sw"
-
+/*
+ * Store last update time information
+ * for sensor values
+ */
 static struct timeval gs_sensor[4];
 
+/*
+ * Context for redis connection and controller
+ * network connection
+ */
 static to_socket_ctx gs_socket = -1;
-
 static redisAsyncContext *gs_async_context = NULL;
 
+/*
+ * Buffer use to convert and send strings
+ */
 static char input_buffer[1024];
 static char output_buffer[1024];
 
+/*
+ * convert object used when converting encoding
+ * from utf-8 to gb2312
+ */
 static iconv_t conv = NULL;
 
-static char gs_idx_name[6] = {'1', '2', '3', '4', '5', '6'};
+/*
+ * Used to pass parameters to subscribeCallback
+ */
+static char gs_idx_name[6] = {'0', '1', '2', '3', '4', '5'};
 
+/*
+ * Flag for micro srevice exit event, when set 
+ * to 1 the micro service will not restart
+ * automatically, but exit
+ */
 static int gs_exit = 0;
 
 /*
@@ -147,7 +196,7 @@ int convert_encoding(void) {
  * 
  */
 int draw_string(unsigned int x_start, unsigned int y_start, unsigned int x_end, unsigned int y_end, unsigned int color, unsigned char font_size, const char* fmt, ...) {
-    int ret = SND_RCV_OK;
+    int ret;
     int converted_cnt = 0;
     va_list ap;
     va_start(ap, fmt);
@@ -218,7 +267,7 @@ int draw_string(unsigned int x_start, unsigned int y_start, unsigned int x_end, 
  * 
  */
  int draw_rectangle(unsigned int x_start, unsigned int y_start, unsigned int x_end, unsigned int y_end, unsigned int color) {
-    int ret = SND_RCV_OK;
+    int ret;
     unsigned char retry = 0;
     unsigned char bytes[11];
     
@@ -234,9 +283,10 @@ int draw_string(unsigned int x_start, unsigned int y_start, unsigned int x_end, 
     bytes[9] = ((color >> 8) & 0xFF);
     bytes[10] = (color & 0xFF);
     
-    LOG_DEBUG("Draw Rectangle send!");
+    LOG_DEBUG("Draw rectangle send!");
     ret = to_send(gs_socket, bytes, 11, 0);
     if(0 > ret) {
+        LOG_ERROR("Draw rectangle failed send!");
         return ret;
     }
     
@@ -246,7 +296,11 @@ int draw_string(unsigned int x_start, unsigned int y_start, unsigned int x_end, 
         ret = to_recv(gs_socket, bytes, 1, 0);
     }
     while(0 > ret && (EAGAIN == errno || EWOULDBLOCK == errno) && retry < 5);
-    LOG_DETAILS("Draw Rectangle received %d 0x%x!", ret, bytes[0]);
+    LOG_DETAILS("Draw rectangle received %d 0x%x!", ret, bytes[0]);
+    
+    if(0 > ret) {
+        LOG_ERROR("Draw rectangle failed receive! %s", strerror(errno));
+    }
     
     return ret;
 }
@@ -274,7 +328,7 @@ int draw_string(unsigned int x_start, unsigned int y_start, unsigned int x_end, 
  * 
  */
 int draw_line(unsigned int x_start, unsigned int y_start, unsigned int x_end, unsigned int y_end, unsigned int color) {
-    int ret = SND_RCV_OK;
+    int ret;
     unsigned char bytes[11];
     
     bytes[0] = 0x61; //cmd
@@ -300,6 +354,45 @@ int draw_line(unsigned int x_start, unsigned int y_start, unsigned int x_end, un
 }
 
 /*
+ * draw_sensor_name is used to draw the name of
+ * sensor index in corresponding area. It is 
+ * called internally from drawSensorNameCallback
+ * and main function.
+ * 
+ * Parameters:
+ * unsigned char index      index of the sensor
+ * char* value              sensor name string
+ * 
+ * Return value:
+ * Equal or greater than 0 means successful
+ * Less than 0 means failed
+ */
+int draw_sensor_name(unsigned char index, char* value) {
+    int ret;
+    unsigned int x_start, y_start, x_end, y_end;
+    unsigned char font_size = 24;
+
+    x_start = 2;
+    x_end = 82;
+    y_start = 60 * index + 6;
+    y_end = 60 * index * 60 + 31;
+
+    // erase target area
+    ret = draw_rectangle(x_start, y_start, x_end, y_end, BACKGROUND_COLOR);
+    if(0 > ret) {
+        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
+        return ret;
+    }
+    
+    ret = draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, value);
+    if(0 > ret) {
+        LOG_ERROR("Error drawSensor1Callback drawing string!");
+    }
+    
+    return ret;
+}
+
+/*
  * drawSensor1NameCallback is used to draw the name of
  * sensor 1 in corresponding area. The design here is 
  * to put the name string in redis, and hard code the
@@ -317,14 +410,11 @@ int draw_line(unsigned int x_start, unsigned int y_start, unsigned int x_end, un
  */
 void drawSensorNameCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
-    unsigned char font_size;
     
     LOG_DETAILS("Enter drawSensorNameCallback");
     
     char* priv_ch = (char*)privdata;
-    if(*priv_ch < '1' || *priv_ch > '4') {
+    if(*priv_ch < '0' || *priv_ch > '3') {
         LOG_WARNING("Warning: invalid priv data %c!", priv_ch);
         return;
     }
@@ -337,40 +427,56 @@ void drawSensorNameCallback(redisAsyncContext *c, void *r, void *privdata) {
     }
     
     LOG_DETAILS("Priv data: %c", *priv_ch);
+    
+    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
+        if(0 > draw_sensor_name(*priv_ch - '0', reply->element[2]->str)) {
+            LOG_ERROR("Error drawSensorNameCallback!");
+            redisAsyncDisconnect(c);
+        }
+    } else {
+        LOG_WARNING("Invalid drawSensorNameCallback input format!");
+    }
+    
+    LOG_DETAILS("drawSensorNameCallback finished!");
+}
+
+/*
+ * draw_sensor is used to draw the value of
+ * sensor index in corresponding area. It is 
+ * called internally from drawSensorCallback
+ * and main function.
+ * 
+ * Parameters:
+ * unsigned char index      index of the sensor
+ * char* value              sensor name string
+ * 
+ * Return value:
+ * Equal or greater than 0 means successful
+ * Less than 0 means failed
+ */
+int draw_sensor(unsigned char index, char* value) {
+    int ret;
+    unsigned int x_start, y_start, x_end, y_end;
+    unsigned char font_size = 24;
 
     x_start = 2;
     x_end = 82;
-    y_start = (*priv_ch - '1') * 60 + 6;
-    y_end = (*priv_ch - '1') * 60 + 31;
-    font_size = 24;
-    
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
-        if(0 == reply->elements) {
-            LOG_DETAILS("Sting: %s", reply->str);
-        } else {
-            for(size_t i = 0; i < reply->elements; i++) {
-                LOG_DETAILS("Element %d: %s", i, reply->element[i]->str);
-            }
-        }
-        return;
+    y_start = 60 * index + 34;
+    y_end = 60 * index * 60 + 59;
+
+    // erase target area
+    ret = draw_rectangle(x_start, y_start, x_end, y_end, BACKGROUND_COLOR);
+    if(0 > ret) {
+        LOG_ERROR("Error draw_sensor drawing rectangle!");
+        return ret;
     }
     
-    if(0 > draw_rectangle(x_start, y_start, x_end, y_end, COLOR_BLUE)) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
+    ret = draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, value);
+    if(0 > ret) {
+        LOG_ERROR("Error draw_sensor drawing string!");
     }
     
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, ch)) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
-    }
-    LOG_DETAILS("Enter finished!");
+    return ret;
 }
 
 /*
@@ -391,12 +497,9 @@ void drawSensorNameCallback(redisAsyncContext *c, void *r, void *privdata) {
  */
 void drawSensorCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
-    unsigned char font_size;
 
     char* priv_ch = (char*)privdata;
-    if(*priv_ch < '1' || *priv_ch > '4') {
+    if(*priv_ch < '0' || *priv_ch > '3') {
         LOG_WARNING("Warning: invalid priv data %c!", priv_ch);
         return;
     }
@@ -416,40 +519,63 @@ void drawSensorCallback(redisAsyncContext *c, void *r, void *privdata) {
         return;
     }
 
-    gettimeofday(&gs_sensor[*priv_ch - '1'], NULL);
+    gettimeofday(&gs_sensor[*priv_ch - '0'], NULL);
 
-    x_start = 2;
-    x_end = 82;
-    y_start = (*priv_ch - '1') * 60 + 34;
-    y_end = (*priv_ch - '1') * 60 + 59;
-    font_size = 24;
-    
     if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
-        if(0 == reply->elements) {
-            LOG_DETAILS("Sting: %s", reply->str);
-        } else {
-            for(size_t i = 0; i < reply->elements; i++) {
-                LOG_DETAILS("Element %d: %s", i, reply->element[i]->str);
-            }
+        if(0 > draw_sensor(*priv_ch - '0', reply->element[2]->str)) {
+            LOG_ERROR("Error drawSensorCallback!");
+            redisAsyncDisconnect(c);
         }
-        return;
+    } else {
+        LOG_WARNING("Invalid drawSensorCallback input format!");
     }
     
-    if(0 > draw_rectangle(x_start, y_start, x_end, y_end, COLOR_BLUE)) {
+    LOG_DETAILS("drawSensorCallback finished!");
+}
+
+/*
+ * draw_sw_name is used to draw the name of
+ * switch index in corresponding area. It is 
+ * called internally from drawSWNameCallback
+ * and main function.
+ * 
+ * Parameters:
+ * unsigned char index      index of the sensor
+ * char* value              sensor name string
+ * 
+ * Return value:
+ * Equal or greater than 0 means successful
+ * Less than 0 means failed
+ */
+int draw_sw_name(unsigned char index, char* value) {
+    int ret = SND_RCV_OK;
+    unsigned int x_start, y_start, x_end, y_end;
+    unsigned char font_size = 32;
+
+    x_start = 79 * index + 91;
+    x_end = 79 * index + 162;
+
+    if(index >= 3) {
+        y_start = 152;
+        y_end = 185;
+    } else {
+        y_start = 31;
+        y_end = 64;
+    }
+
+    // erase target area
+    ret = draw_rectangle(x_start, y_start, x_end, y_end, BACKGROUND_COLOR);
+    if(0 > ret) {
         LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
+        return ret;
     }
     
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, ch)) {
+    ret = draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, value);
+    if(0 > ret) {
         LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
     }
+    
+    return ret;
 }
 
 /*
@@ -470,12 +596,9 @@ void drawSensorCallback(redisAsyncContext *c, void *r, void *privdata) {
  */
 void drawSWNameCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
-    unsigned char font_size;
 
     char* priv_ch = (char*)privdata;
-    if(*priv_ch < '1' || *priv_ch > '6') {
+    if(*priv_ch < '0' || *priv_ch > '5') {
         LOG_WARNING("Warning: invalid priv data %c!", priv_ch);
         return;
     }
@@ -487,44 +610,70 @@ void drawSWNameCallback(redisAsyncContext *c, void *r, void *privdata) {
         return;
     }
 
-    x_start = ((*priv_ch - '1') % 3) * 79 + 91;
-    x_end = ((*priv_ch - '1') % 3) * 79 + 162;
-
-    if(*priv_ch > '3') {
-        y_start = 152;
-        y_end = 185;
-    } else {
-        y_start = 31;
-        y_end = 64;
-    }
-    font_size = 32;
-    
     if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
-        if(0 == reply->elements) {
-            LOG_DETAILS("Sting: %s", reply->str);
-        } else {
-            for(size_t i = 0; i < reply->elements; i++) {
-                LOG_DETAILS("Element %d: %s", i, reply->element[i]->str);
-            }
+        if(0 > draw_sw_name(*priv_ch - '0', reply->element[2]->str)) {
+            LOG_ERROR("Error drawSWNameCallback!");
+            redisAsyncDisconnect(c);
         }
-        return;
+    } else {
+        LOG_WARNING("Invalid drawSensorCallback input format!");
     }
     
-    if(0 > draw_rectangle(x_start, y_start, x_end, y_end, COLOR_BLUE)) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
+    LOG_DETAILS("drawSWNameCallback finished!");
+}
+
+/*
+ * draw_sw_status is used to draw the status of
+ * switch index in corresponding area. It is 
+ * called internally from drawSWStatusCallback
+ * and main function.
+ * 
+ * Parameters:
+ * unsigned char index      index of the sensor
+ * char* value              sensor name string
+ * 
+ * Return value:
+ * Equal or greater than 0 means successful
+ * Less than 0 means failed
+ */
+int draw_sw_status(unsigned char index, unsigned char status) {
+    int ret;
+    unsigned int x_start, y_start, x_end, y_end, x_min, x_max;
+    unsigned char font_size = 16;
+    const char* ch = NULL;
+
+    if(index >= 3) {
+        y_start = 190;
+        y_end = 207;
+    } else {
+        y_start = 69;
+        y_end = 86;
     }
-    
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, ch)) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
+
+    x_min = (index % 3) * 79 + 107;
+    x_max = (index % 3) * 79 + 140;
+    if(0 == status) {
+        x_start = (index % 3) * 79 + 107;
+        x_end = (index % 3) * 79 + 124;
+        ch = "关";
+    } else {
+        x_start = (index % 3) * 79 + 123;
+        x_end = (index % 3) * 79 + 140;
+        ch = "开";
     }
+
+    ret = draw_rectangle(x_min, y_start, x_max, y_end, BACKGROUND_COLOR);
+    if(0 > ret) {
+        LOG_ERROR("Error draw_sw_status drawing rectangle!");
+        return ret;
+    }
+   
+    ret = draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, ch);
+    if(0 > ret) {
+        LOG_ERROR("Error draw_sw_status drawing string!");
+    }
+        
+    return ret;
 }
 
 /*
@@ -545,11 +694,9 @@ void drawSWNameCallback(redisAsyncContext *c, void *r, void *privdata) {
  */
 void drawSWStatusCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
-    const char* ch = NULL;
-    unsigned int x_start, y_start, x_end, y_end;
 
     char* priv_ch = (char*)privdata;
-    if(*priv_ch < '1' || *priv_ch > '6') {
+    if(*priv_ch < '0' || *priv_ch > '5') {
         LOG_WARNING("Warning: invalid priv data %c!", priv_ch);
         return;
     }
@@ -562,50 +709,49 @@ void drawSWStatusCallback(redisAsyncContext *c, void *r, void *privdata) {
     }
 
     if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: drawSensor1Callback does not have valid value!");
-        if(0 == reply->elements) {
-            LOG_DETAILS("Sting: %s", reply->str);
-        } else {
-            for(size_t i = 0; i < reply->elements; i++) {
-                LOG_DETAILS("Element %d: %s", i, reply->element[i]->str);
-            }
+        if(0 > draw_sw_status(*priv_ch - '0', 0 != strcmp("0", reply->element[2]->str))) {
+            LOG_ERROR("Error drawSWStatusCallback!");
+            redisAsyncDisconnect(c);
         }
-        return;
+    } else {
+        LOG_WARNING("Invalid drawSWStatusCallback input format!");
     }
     
-    if(*priv_ch > '3') {
-        y_start = 190;
-        y_end = 207;
-    } else {
-        y_start = 69;
-        y_end = 86;
-    }
+    LOG_DETAILS("drawSWStatusCallback finished!");
+}
 
-    if(0 == strcmp("0", ch)) {
-        x_start = ((*priv_ch - '1') % 3) * 79 + 107;
-        x_end = ((*priv_ch - '1') % 3) * 79 + 124;
-        ch = "关";
-    } else {
-        x_start = ((*priv_ch - '1') % 3) * 79 + 123;
-        x_end = ((*priv_ch - '1') % 3) * 79 + 140;
-        ch = "开";
+/*
+ * set_brightness is used to set brightness
+ * of LCD display. This is called from 
+ * setBrightnessCallback and main function
+ * 
+ * Parameters:
+ * unsigned char brightness brightness value
+ * 
+ * Return value:
+ * Equal or greater than 0 means successful
+ * Less than 0 means failed
+ */
+int set_brightness(unsigned char brightness) {
+    int ret;
+    unsigned char bytes[2];
+
+    bytes[0] = 0x65;
+    bytes[1] = brightness;
+
+    ret = to_send(gs_socket, bytes, 2, 0);
+    if(0 > ret) {
+        LOG_ERROR("Error setBrightnessCallback send failed! %s", strerror(errno));
+        return ret;
     }
     
-    if(0 > draw_rectangle(107, 69, 140, 86, COLOR_BLUE)) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        redisAsyncDisconnect(c);
-        return;
+    ret = to_recv(gs_socket, bytes, 1, 0);
+    if(0 > ret){
+        LOG_ERROR("Error setBrightnessCallback recv failed! %s", strerror(errno));
     }
     
-    if(0 > draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, 16, ch)) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-        redisAsyncDisconnect(c);
-    }
- }
+    return ret;
+}
 
 /*
  * setBrightnessCallback is used to set the brightness
@@ -621,8 +767,8 @@ void drawSWStatusCallback(redisAsyncContext *c, void *r, void *privdata) {
  */
 void setBrightnessCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
-    const char* ch = NULL;
-    char bytes[2];
+    
+    UNUSED(privdata);
     
     if (NULL == reply) {
         if (c->errstr) {
@@ -631,40 +777,14 @@ void setBrightnessCallback(redisAsyncContext *c, void *r, void *privdata) {
         return;
     }
     
-    if(NULL != privdata) {
-        LOG_WARNING("Warning: setBrightnessCallback invalid priv data!");
-        return;
-    }
-
     if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: setBrightnessCallback does not have valid value!");
-        if(0 == reply->elements) {
-            LOG_DETAILS("Sting: %s", reply->str);
-        } else {
-            for(size_t i = 0; i < reply->elements; i++) {
-                LOG_DETAILS("Element %d: %s", i, reply->element[i]->str);
-            }
+        if(0 > set_brightness(atoi(reply->element[2]->str) & 0xFF)) {
+            LOG_ERROR("Set brightness failed!");
+            redisAsyncDisconnect(c);
         }
-        return;
     }
     
-    bytes[0] = 0x65;
-    bytes[1] = atoi(ch) & 0xFF;
-
-    if(0 > to_send(gs_socket, bytes, 2, 0)) {
-        LOG_ERROR("Error setBrightnessCallback send failed! %s", strerror(errno));
-        redisAsyncDisconnect(c);
-        return;
-    }
-    
-    if(0 > to_recv(gs_socket, bytes, 1, 0)){
-        LOG_ERROR("Error setBrightnessCallback recv failed! %s", strerror(errno));
-        redisAsyncDisconnect(c);
-    }
+    LOG_DETAILS("set_brightness finished!");
 }
 
 /*
@@ -683,7 +803,8 @@ void setBrightnessCallback(redisAsyncContext *c, void *r, void *privdata) {
  */
 void exitCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
-    const char* ch = NULL;
+    
+    UNUSED(privdata);
     
     if (NULL == reply) {
         if (c->errstr) {
@@ -692,31 +813,49 @@ void exitCallback(redisAsyncContext *c, void *r, void *privdata) {
         return;
     }
 
-    if(NULL != privdata) {
-        LOG_WARNING("Warning: exitCallback invalid priv data!");
+    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
+        if(0 == strcmp(EXIT_FLAG_VALUE, reply->element[2]->str)) {
+            gs_exit = 1;
+            redisAsyncDisconnect(c);
+        }
+    }
+
+    LOG_DEBUG("Exit finished!\n");
+}
+
+/*
+ * resetCallback is used to check whether
+ * the micro service needs to reset. When
+ * "exit" is received then exit the micro
+ * service
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           Not used
+ * 
+ * Return value:
+ * There is no return value
+ */
+void resetCallback(redisAsyncContext *c, void *r, void *privdata) {
+    redisReply *reply = r;
+    
+    UNUSED(privdata);
+    
+    if (NULL == reply) {
+        if (c->errstr) {
+            LOG_ERROR("errstr: %s", c->errstr);
+        }
         return;
     }
 
     if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        ch = reply->element[2]->str;
-    } else if(NULL != reply->str) {
-        ch = reply->str;
-    } else {
-        LOG_WARNING("Warning: exitCallback does not have valid value!");
-        if(0 == reply->elements) {
-            LOG_DETAILS("Sting: %s", reply->str);
-        } else {
-            for(size_t i = 0; i < reply->elements; i++) {
-                LOG_DETAILS("Element %d: %s", i, reply->element[i]->str);
-            }
+        if(0 == strcmp(RESET_FLAG_VALUE, reply->element[2]->str)) {
+            redisAsyncDisconnect(c);
         }
-        return;
     }
-    
-    if(0 == strcmp(EXIT_FLAG_VALUE, ch)) {
-        gs_exit = 1;
-        redisAsyncDisconnect(c);
-    }
+
+    LOG_DEBUG("Reset finished!\n");
 }
 
 /*
@@ -766,6 +905,8 @@ void setLogLevelCallback(redisAsyncContext *c, void *r, void *privdata) {
     if(0 > log_set_level(ch)) {
         LOG_WARNING("Warning: invalid log level %s!", ch);
     }
+
+    LOG_DETAILS("setLogLevelCallback finished!");
 }
 
 /*
@@ -879,11 +1020,17 @@ l_start:
 #ifndef _WIN32
     signal(SIGPIPE, SIG_IGN);
 #endif
-    struct event_base *base;
+    struct event_base *base = event_base_new();;
+    struct timeval timeout = { 0, 100000 }; 
 
     char* serv_ip;
     const char* redis_ip;
     int serv_port, redis_port;
+    
+    redisContext *sync_context = NULL;
+
+    redis_ip = REDIS_IP;
+    redis_port = REDIS_PORT;
     
     switch(argc) {
         case 6:
@@ -909,14 +1056,10 @@ l_start:
             }
             serv_ip = argv[1];
             serv_port = atoi(argv[2]);
-            redis_ip = REDIS_IP;
-            redis_port = REDIS_PORT;
             break;
         case 3:
             serv_ip = argv[1];
             serv_port = atoi(argv[2]);
-            redis_ip = REDIS_IP;
-            redis_port = REDIS_PORT;
             break;
         default:
             print_usage(argc, argv);
@@ -926,10 +1069,13 @@ l_start:
     gs_socket = to_connect(serv_ip, serv_port);
     if(0 > gs_socket) {
         LOG_ERROR("Error creating socket!");
-        goto l_start;
+        goto l_socket_cleanup;
     }
     
 /*  
+ * Uncomment this part when LCD code upgraded
+ */
+/*
     if(0 > to_recv(gs_socket, &temp, 1, 0)) {
         LOG_ERROR("Error receiving initial data! %d %s", ret, strerror(errno));
         goto l_socket_cleanup;
@@ -937,7 +1083,42 @@ l_start:
     LOG_INFO("Connected to controller, remote socket: %d", temp);
 */    
     
-    base = event_base_new();
+    sync_context = redisConnectWithTimeout(redis_ip, redis_port, timeout);
+    if(NULL == sync_context) {
+        LOG_ERROR("Connection error: can't allocate redis context");
+        goto l_exit;
+    }
+    
+    if(sync_context->err) {
+        LOG_ERROR("Connection error: %s", sync_context->errstr);
+        goto l_free_sync_redis;
+    }
+
+    redisReply* reply = redisCommand(sync_context,"PING");
+    if(NULL == reply) {
+        LOG_ERROR("Failed to sync query redis %s", sync_context->errstr);
+        goto l_free_sync_redis;
+    }
+    LOG_DEBUG("PING: %s", reply->str);
+    freeReplyObject(reply);
+
+    LOG_INFO("Connected to redis in sync mode");
+    
+    // update log level to config in redis
+    LOG_DETAILS("GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
+    reply = redisCommand(sync_context,"GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
+
+    if(NULL == reply) {
+        LOG_ERROR("Failed to sync query redis %s", sync_context->errstr);
+        goto l_free_async_redis;
+    }
+    
+    if(LOG_SET_LEVEL_OK != log_set_level(reply->str)) {
+        LOG_WARNING("Failed to set log level %s", reply->str);
+    }
+
+    freeReplyObject(reply);
+    
     redisOptions options = {0};
     REDIS_OPTIONS_SET_TCP(&options, redis_ip, redis_port);
     struct timeval tv = {0};
@@ -967,60 +1148,166 @@ l_start:
         gettimeofday(&gs_sensor[i], NULL);
     }
 
+    // Initialize sensor
     for(int i = 0; i < 4; i++) {
-        LOG_DETAILS("GET %s/%s/%s%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i + 1);
-        redisAsyncCommand(gs_async_context, drawSensorNameCallback, &gs_idx_name[i], "GET %s/%s/%s%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i + 1);
+        LOG_DETAILS("HGET %s/%s %s%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i);
+        reply = redisCommand(sync_context,"HGET %s/%s %s%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i);
+
+        if(NULL == reply) {
+            LOG_ERROR("Failed to sync query redis sensor name config %s", sync_context->errstr);
+            goto l_free_async_redis;
+        }
+        
+        if(NULL != reply->str) {
+            redisReply* reply2 = redisCommand(sync_context,"GET %s", reply->str);
+            
+            if(NULL == reply2) {
+                LOG_ERROR("Failed to sync query redis sensor name topic %s", sync_context->errstr);
+                goto l_free_async_redis;
+            }
+            
+            if(NULL != reply2->str) {
+                if(0 > draw_sensor_name(i, reply2->str)) {
+                    LOG_ERROR("Failed to draw sensor name %d", i);
+                    freeReplyObject(reply2);
+                    goto l_free_async_redis;
+                }
+            }
+            
+            freeReplyObject(reply2);
+
+            redisAsyncCommand(gs_async_context, drawSensorNameCallback, &gs_idx_name[i], "SUBSCRIBE %s", reply->str);
+        }
+        
+        freeReplyObject(reply);
+
+        LOG_DETAILS("HGET %s/%s %s%d", FLAG_KEY, serv_ip, SENSOR_TOPIC, i);
+        reply = redisCommand(sync_context,"HGET %s/%s %s%d", FLAG_KEY, serv_ip, SENSOR_TOPIC, i);
+
+        if(NULL == reply) {
+            LOG_ERROR("Failed to sync query redis sensor value config %s", sync_context->errstr);
+            goto l_free_async_redis;
+        }
+        
+        if(NULL != reply->str) {
+            redisReply* reply2 = redisCommand(sync_context,"GET %s", reply->str);
+            
+            if(NULL == reply2) {
+                LOG_ERROR("Failed to sync query redis sensor value topic %s", sync_context->errstr);
+                goto l_free_async_redis;
+            }
+            
+            if(NULL != reply2->str) {
+                if(0 > draw_sensor(i, reply2->str)) {
+                    LOG_ERROR("Failed to draw sensor name %d", i);
+                    freeReplyObject(reply2);
+                    goto l_free_async_redis;
+                }
+            }
+            
+            freeReplyObject(reply2);
+
+            redisAsyncCommand(gs_async_context, drawSensorCallback, &gs_idx_name[i], "SUBSCRIBE %s", reply->str);
+        }
+        
+        freeReplyObject(reply);
     }
 
-    for(int i = 0; i < 4; i++) {
-        LOG_DETAILS("GET %s/%s/%s%d", FLAG_KEY, serv_ip, SENSOR_TOPIC, i + 1);
-        redisAsyncCommand(gs_async_context, drawSensorCallback, &gs_idx_name[i], "GET %s/%s/%s%d", FLAG_KEY, serv_ip, SENSOR_TOPIC, i + 1);
-    }
-
+    // Initialize brightness
     LOG_DETAILS("GET %s/%s/%s", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC);
-    redisAsyncCommand(gs_async_context, setBrightnessCallback, NULL, "GET %s/%s/%s", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC);
-    
-    for(int i = 0; i < 6; i++) {
-        LOG_DETAILS("SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SW_NAME_TOPIC, i + 1);
-        redisAsyncCommand(gs_async_context, drawSWNameCallback, &gs_idx_name[i], "SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SW_NAME_TOPIC, i + 1);
-    }
+    reply = redisCommand(sync_context,"GET %s/%s/%s", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC);
 
-    for(int i = 0; i < 6; i++) {
-        LOG_DETAILS("SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SW_TOPIC, i + 1);
-        redisAsyncCommand(gs_async_context, drawSWStatusCallback, &gs_idx_name[i], "SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SW_TOPIC, i + 1);
+    if(NULL == reply) {
+        LOG_ERROR("Failed to sync query redis sensor topic %s", sync_context->errstr);
+        goto l_free_async_redis;
     }
     
-    LOG_DETAILS("SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
-    redisAsyncCommand(gs_async_context, setLogLevelCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
-
-    for(int i = 0; i < 4; i++) {
-        LOG_DETAILS("SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i + 1);
-        redisAsyncCommand(gs_async_context, drawSensorNameCallback, &gs_idx_name[i], "SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i + 1);
+    if(NULL != reply->str) {
+        if(0 > set_brightness(atoi(reply->str) & 0xFF)) {
+            LOG_ERROR("Failed to set brightness");
+            goto l_free_async_redis;
+        }
     }
-
-    for(int i = 0; i < 4; i++) {
-        LOG_DETAILS("SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SENSOR_TOPIC, i + 1);
-        redisAsyncCommand(gs_async_context, drawSensorCallback, &gs_idx_name[i], "SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SENSOR_TOPIC, i + 1);
-    }
-
+    
+    freeReplyObject(reply);
+    
     LOG_DETAILS("SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC);
     redisAsyncCommand(gs_async_context, setBrightnessCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC);
     
+    // Initialize switch
     for(int i = 0; i < 6; i++) {
-        LOG_DETAILS("SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SW_NAME_TOPIC, i + 1);
-        redisAsyncCommand(gs_async_context, drawSWNameCallback, &gs_idx_name[i], "SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SW_NAME_TOPIC, i + 1);
-    }
+        LOG_DETAILS("HGET %s/%s %s%d", FLAG_KEY, serv_ip, SW_NAME_TOPIC, i);
+        reply = redisCommand(sync_context,"HGET %s/%s %s%d", FLAG_KEY, serv_ip, SW_NAME_TOPIC, i);
 
-    for(int i = 0; i < 6; i++) {
-        LOG_DETAILS("SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SW_TOPIC, i + 1);
-        redisAsyncCommand(gs_async_context, drawSWStatusCallback, &gs_idx_name[i], "SUBSCRIBE %s/%s/%s%d", FLAG_KEY, serv_ip, SW_TOPIC, i + 1);
+        if(NULL == reply) {
+            LOG_ERROR("Failed to sync query redis switch name config %s", sync_context->errstr);
+            goto l_free_async_redis;
+        }
+        
+        if(NULL != reply->str) {
+            redisReply* reply2 = redisCommand(sync_context,"GET %s", reply->str);
+            
+            if(NULL == reply2) {
+                LOG_ERROR("Failed to sync query redis switch name topic %s", sync_context->errstr);
+                goto l_free_async_redis;
+            }
+            
+            if(NULL != reply2->str) {
+                if(0 > draw_sw_name(i, reply2->str)) {
+                    LOG_ERROR("Failed to draw sensor name %d", i);
+                    freeReplyObject(reply2);
+                    goto l_free_async_redis;
+                }
+            }
+            
+            freeReplyObject(reply2);
+
+            redisAsyncCommand(gs_async_context, drawSWNameCallback, &gs_idx_name[i], "SUBSCRIBE %s", reply->str);
+        }
+        
+        freeReplyObject(reply);
+
+        LOG_DETAILS("HGET %s/%s %s%d", FLAG_KEY, serv_ip, SW_TOPIC, i);
+        reply = redisCommand(sync_context,"HGET %s/%s %s%d", FLAG_KEY, serv_ip, SW_TOPIC, i);
+
+        if(NULL == reply) {
+            LOG_ERROR("Failed to sync query redis switch status config %s", sync_context->errstr);
+            goto l_free_async_redis;
+        }
+        
+        if(NULL != reply->str) {
+            redisReply* reply2 = redisCommand(sync_context,"GET %s", reply->str);
+            
+            if(NULL == reply2) {
+                LOG_ERROR("Failed to sync query redis sensor status topic %s", sync_context->errstr);
+                goto l_free_async_redis;
+            }
+            
+            if(NULL != reply2->str) {
+                if(0 > draw_sw_status(i, 0 != strcmp("0", reply2->str))) {
+                    LOG_ERROR("Failed to draw sensor name %d", i);
+                    freeReplyObject(reply2);
+                    goto l_free_async_redis;
+                }
+            }
+            
+            freeReplyObject(reply2);
+
+            redisAsyncCommand(gs_async_context, drawSWStatusCallback, &gs_idx_name[i], "SUBSCRIBE %s", reply->str);
+        }
+        
+        freeReplyObject(reply);
     }
     
-    LOG_DETAILS("SUBSCRIBE %s/%s", FLAG_KEY, serv_ip);
-    redisAsyncCommand(gs_async_context, exitCallback, NULL, "SUBSCRIBE %s/%s", FLAG_KEY, serv_ip);
+    // Subscribe changes for log_level, exit, reset
+    LOG_DETAILS("SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, EXIT_FLAG_VALUE);
+    redisAsyncCommand(gs_async_context, exitCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, EXIT_FLAG_VALUE);
+    LOG_DETAILS("SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, RESET_FLAG_VALUE);
+    redisAsyncCommand(gs_async_context, resetCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, RESET_FLAG_VALUE);
     LOG_DETAILS("SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
     redisAsyncCommand(gs_async_context, setLogLevelCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
 
+    // draw grids
     if(0 > draw_rectangle(0, 0, 319, 239, COLOR_BLUE)) {
         goto l_free_async_redis;
     }
@@ -1050,11 +1337,21 @@ l_free_async_redis:
     event_base_free(base);
     LOG_INFO("exit!");
     
+l_free_sync_redis:
+    if(NULL != sync_context) {
+        redisFree(sync_context);
+        sync_context = NULL;
+    }
+    
 l_socket_cleanup:
     to_close(gs_socket);
     gs_socket = -1;
     
-    goto l_start;
+l_exit:
+    if(!gs_exit) {    
+        LOG_ERROR("Execution failed retry!");
+        goto l_start;
+    }
     
     return 0;
 }
