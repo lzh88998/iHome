@@ -389,7 +389,8 @@ l_start:
             print_usage(argc, argv);
             return -1;
     }
-        
+
+    LOG_DETAILS("Connecting to Redis!");
     gs_sync_context = redisConnectWithTimeout(redis_ip, redis_port, timeout);
     if(NULL == gs_sync_context) {
         LOG_ERROR("Connection error: can't allocate redis context");
@@ -400,6 +401,8 @@ l_start:
         LOG_ERROR("Connection error: %s", gs_sync_context->errstr);
         goto l_free_sync_redis;
     }
+
+    LOG_DETAILS("Connected to Redis!");
 
     redisReply* reply = redisCommand(gs_sync_context,"PING");
     if(NULL == reply) {
@@ -435,8 +438,10 @@ l_start:
         goto l_free_async_redis;
     }
     
-    if(0 > log_set_level(reply->str)) {
-        LOG_WARNING("Failed to set log level %s", reply->str);
+    if(NULL != reply->str) {
+        if(0 > log_set_level(reply->str)) {
+            LOG_WARNING("Failed to set log level %s", reply->str);
+        }
     }
 
     freeReplyObject(reply);
@@ -476,6 +481,7 @@ l_free_sync_redis:
 l_exit:
     if(!gs_exit) {    
         LOG_ERROR("Godown_keeper execution failed retry!");
+        sleep(1);
         goto l_start;
     }
 

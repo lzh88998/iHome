@@ -659,6 +659,7 @@ l_socket_cleanup:
 l_exit:
     if(!gs_exit) {    
         LOG_ERROR("Execution failed retry!");
+        sleep(1);
         goto l_start;
     }
     

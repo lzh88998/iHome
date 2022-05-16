@@ -444,6 +444,7 @@ l_socket_cleanup:
 
     if(!gs_exit) {    
         LOG_ERROR("Monitor execution failed retry!");
+        sleep(1);
         goto l_start;
     }
     

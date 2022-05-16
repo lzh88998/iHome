@@ -27,10 +27,10 @@
 #define REDIS_IP                "127.0.0.1"
 #define REDIS_PORT              6379
 
-#define REDIS_MESSAGE_TYPE      "pmessage"
-
 #define FLAG_KEY                "sensor"
-#define EXIT_FLAG_VALUE         "exit"
+#define SENSOR_KEY              "sensor_"
+
+#define SENSOR_COUNT            4
 
 static to_socket_ctx gs_socket = -1;
 static redisContext *gs_sync_context = NULL;
@@ -107,9 +107,18 @@ l_start:
     
     const char* serv_ip;
     const char* redis_ip;
+    
+    redisReply* topics[SENSOR_COUNT];
+    
     int serv_port, redis_port;
     
+    int topic_index = 0;
+    
     memset(buffer, 0, 4);
+    
+    for(int i = 0; i < SENSOR_COUNT; i++) {
+        topics[i] = NULL;
+    }
     
     switch(argc) {
         case 6:
@@ -152,7 +161,7 @@ l_start:
     gs_socket = to_connect(serv_ip, serv_port);
     if(-1 == gs_socket) {
         LOG_ERROR("Error connecting to controller!\n");
-        goto l_socket_cleanup;
+        goto l_exit;
     }
     
  /* 
@@ -163,6 +172,7 @@ l_start:
     LOG_INFO("Connected to controller, remote socket: %d\n", temp);
 */    
 
+    LOG_INFO("Connecting to Redis...");
     gs_sync_context = redisConnectWithTimeout(redis_ip, redis_port, timeout);
     if(NULL == gs_sync_context) {
         LOG_ERROR("Connection error: can't allocate redis context\n");
@@ -181,6 +191,18 @@ l_start:
     }
     LOG_DEBUG("PING: %s\n", reply->str);
     freeReplyObject(reply);
+    
+    // load config from redis
+    while(topic_index < SENSOR_COUNT) {
+        topics[topic_index] = redisCommand(gs_sync_context,"HGET %s/%s/%d %s%d", FLAG_KEY, serv_ip, serv_port, SENSOR_KEY, topic_index);
+        if(NULL == topics[topic_index]) {
+            topic_index++;
+            LOG_ERROR("Failed to sync query redis %s\n", gs_sync_context->errstr);
+            goto l_free_topics;
+        }
+        LOG_DETAILS("Topic %d: %s", topic_index, topics[topic_index]->str);
+        topic_index++;
+    }
 
     while(!gs_exit) {
         if(-1 == to_recv(gs_socket, &temp, 1, 0)) {
@@ -191,7 +213,7 @@ l_start:
                 reply = redisCommand(gs_sync_context,"GET %s/%s/%d/%s", FLAG_KEY, serv_ip, serv_port, LOG_LEVEL_FLAG_VALUE);
                 if(NULL == reply) {
                     LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
-                    goto l_free_redis;
+                    goto l_free_topics;
                 }
                 LOG_DETAILS("Get log level returned")
                 if(NULL != reply->str) {
@@ -205,7 +227,7 @@ l_start:
                         reply = redisCommand(gs_sync_context,"DEL %s/%s/%d/%s", FLAG_KEY, serv_ip, serv_port, LOG_LEVEL_FLAG_VALUE);
                         if(NULL == reply) {
                             LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
-                            goto l_free_redis;
+                            goto l_free_topics;
                         }
                         if(NULL != reply->str) {
                             LOG_DETAILS("%s", reply->str);
@@ -217,33 +239,75 @@ l_start:
 
                 // Check exit flag
                 LOG_DEBUG("Check exit flag")
-                reply = redisCommand(gs_sync_context,"GET %s/%s/%d", FLAG_KEY, serv_ip, serv_port);
+                reply = redisCommand(gs_sync_context,"GET %s/%s/%d/%s", FLAG_KEY, serv_ip, serv_port, EXIT_FLAG_VALUE);
                 if(NULL == reply) {
                     LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
-                    goto l_free_redis;
+                    goto l_free_topics;
                 }
                 if(NULL != reply->str) {
-                    LOG_DETAILS("%s", reply->str);
+                    LOG_DETAILS("Exit received %s", reply->str);
                     if(0 == strcmp(EXIT_FLAG_VALUE, reply->str)) {
                         gs_exit = 1;
-                        
+                    }
+
+                    freeReplyObject(reply);
+                    
+                    // delete the flag ensure not find it next start
+                    reply = redisCommand(gs_sync_context,"DEL %s/%s/%d/%s", FLAG_KEY, serv_ip, serv_port, EXIT_FLAG_VALUE);
+                    if(NULL == reply) {
+                        LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+                        goto l_free_topics;
+                    }
+                    if(NULL != reply->str) {
+                        LOG_DETAILS("Del exit reply%s", reply->str);
+                    }
+                }
+                
+                freeReplyObject(reply);
+
+                // Check reset flag
+                LOG_DEBUG("Check reset flag")
+                reply = redisCommand(gs_sync_context,"GET %s/%s/%d/%s", FLAG_KEY, serv_ip, serv_port, RESET_FLAG_VALUE);
+                if(NULL == reply) {
+                    LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+                    goto l_free_topics;
+                }
+                
+                if(NULL != reply->str) {
+                    LOG_DETAILS("Reset received %s", reply->str);
+                    if(0 == strcmp(RESET_FLAG_VALUE, reply->str)) {
                         freeReplyObject(reply);
                         
                         // delete the flag ensure not find it next start
-                        reply = redisCommand(gs_sync_context,"DEL %s/%s/%d", FLAG_KEY, serv_ip, serv_port);
+                        reply = redisCommand(gs_sync_context,"DEL %s/%s/%d/%s", FLAG_KEY, serv_ip, serv_port, RESET_FLAG_VALUE);
                         if(NULL == reply) {
                             LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
-                            goto l_free_redis;
+                            goto l_free_topics;
                         }
                         if(NULL != reply->str) {
-                            LOG_DETAILS("%s", reply->str);
+                            LOG_DETAILS("Del reset reply %s", reply->str);
                         }
+
+                        freeReplyObject(reply);
+                        goto l_free_topics;
+                    }
+
+                    freeReplyObject(reply);
+                    
+                    // delete the flag ensure not find it next start
+                    reply = redisCommand(gs_sync_context,"DEL %s/%s/%d/%s", FLAG_KEY, serv_ip, serv_port, RESET_FLAG_VALUE);
+                    if(NULL == reply) {
+                        LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+                        goto l_free_topics;
+                    }
+                    if(NULL != reply->str) {
+                        LOG_DETAILS("Del reset reply %s", reply->str);
                     }
                 }
                 
                 freeReplyObject(reply);
             } else {
-                goto l_free_redis;
+                goto l_free_topics;
             }
         } else { //
             LOG_DETAILS("Received 0x%x\n", temp);
@@ -253,55 +317,39 @@ l_start:
                         buffer_state++;
                     } // skip other value items
                     break;
-                case 1: // Temperature
-                    buffer[buffer_state -1] = temp;
-                    buffer_state++;
-                    break;
-                case 2: // Move 1
-                    buffer[buffer_state -1] = temp;
-                    buffer_state++;
-                    break;
-                case 3: // Move 2
-                    buffer[buffer_state -1] = temp;
-                    buffer_state++;
-                    break;
-                case 4: // Light
-                    buffer[buffer_state -1] = temp;
-                    buffer_state++;
-                    break;
-                case 5: // last 0xFF
+                case SENSOR_COUNT + 1: // last 0xFF
                     if(0xFF == temp) {
-                        redisReply* reply = redisCommand(gs_sync_context,"PUBLISH %s/%s/%d/1 %d", FLAG_KEY, serv_ip, serv_port, buffer[0]); // temp
-                        if(NULL == reply) {
-                            LOG_ERROR("Failed to sync query redis %s\n", gs_sync_context->errstr);
-                            goto l_free_redis;
+                        for(int i = 0; i < SENSOR_COUNT; i++) {
+                            if(NULL != topics[i]->str) {
+                                redisReply* reply = redisCommand(gs_sync_context,"PUBLISH %s %d", topics[i]->str, buffer[i]);
+                                if(NULL == reply) {
+                                    LOG_ERROR("Failed to sync query redis %s\n", gs_sync_context->errstr);
+                                    goto l_free_topics;
+                                }
+                                freeReplyObject(reply);
+                            }
                         }
-                        freeReplyObject(reply);
-                        reply = redisCommand(gs_sync_context,"PUBLISH %s/%s/%d/2 %d", FLAG_KEY, serv_ip, serv_port, buffer[1]); //mov1
-                        if(NULL == reply) {
-                            LOG_ERROR("Failed to sync query redis %s\n", gs_sync_context->errstr);
-                            goto l_free_redis;
-                        }
-                        freeReplyObject(reply);
-                        reply = redisCommand(gs_sync_context,"PUBLISH %s/%s/%d/3 %d", FLAG_KEY, serv_ip, serv_port, buffer[2]); //mov2
-                        if(NULL == reply) {
-                            LOG_ERROR("Failed to sync query redis %s\n", gs_sync_context->errstr);
-                            goto l_free_redis;
-                        }
-                        freeReplyObject(reply);
-                        reply = redisCommand(gs_sync_context,"PUBLISH %s/%s/%d/4 %d", FLAG_KEY, serv_ip, serv_port, buffer[3]); // light
-                        if(NULL == reply) {
-                            LOG_ERROR("Failed to sync query redis %s\n", gs_sync_context->errstr);
-                            goto l_free_redis;
-                        }
-                        freeReplyObject(reply);
                     } else { // out of sync
                         redisCommand(gs_sync_context,"PUBLISH %s/%s/%d/sync %s", FLAG_KEY, serv_ip, serv_port, "out of sync");
                     }
                     buffer_state = 0;
                     break;
+                default: // 1-4
+                    // Temperature
+                    // Move 1
+                    // Move 2
+                    // Light
+                    buffer[buffer_state -1] = temp;
+                    buffer_state++;
+                    break;
             }
         }
+    }
+
+l_free_topics:
+    while(--topic_index >= 0) {
+        freeReplyObject(topics[topic_index]);
+        topics[topic_index] = NULL;
     }
     
 l_free_redis:
@@ -311,8 +359,10 @@ l_socket_cleanup:
     close(gs_socket);
     gs_socket = -1;
 
+l_exit:
     if(!gs_exit) {    
         printf("Monitor execution failed retry!\n");
+        sleep(1);
         goto l_start;
     }
     

@@ -369,6 +369,7 @@ l_free_async_redis:
 l_exit:
     if(!gs_exit) {    
         printf("Godown_keeper execution failed retry!\n");
+        sleep(1);
         goto l_start;
     }
 

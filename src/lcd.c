@@ -57,7 +57,7 @@
  * when last update happens greater than 
  * this interval value
  */
-#define SENSOR_VALUE_INTERVAL_MS    1500
+#define SENSOR_VALUE_INTERVAL_MS    5000
 
 /*
  * Identifier used in redis keys for this
@@ -470,7 +470,7 @@ int draw_sensor(unsigned char index, char* value) {
     x_start = 2;
     x_end = 82;
     y_start = 60 * index + 34;
-    y_end = index * 60 + 59;
+    y_end = 60 * index + 59;
     
     LOG_DETAILS("Sensor location: %d %d %d %d", x_start, y_start, x_end, y_end);
 
@@ -523,8 +523,8 @@ void drawSensorCallback(redisAsyncContext *c, void *r, void *privdata) {
     
     struct timeval newTime;
     gettimeofday(&newTime, NULL);
-    if(((newTime.tv_sec - gs_sensor[*priv_ch - '1'].tv_sec) * 1000 + 
-        (newTime.tv_usec - gs_sensor[*priv_ch - '1'].tv_usec) / 1000) < SENSOR_VALUE_INTERVAL_MS) {
+    if(((newTime.tv_sec - gs_sensor[*priv_ch - '0'].tv_sec) * 1000 + 
+        (newTime.tv_usec - gs_sensor[*priv_ch - '0'].tv_usec) / 1000) < SENSOR_VALUE_INTERVAL_MS) {
         LOG_DETAILS("Refresh frequency of channel %c is too high, skip", *priv_ch);
         return;
     }
@@ -1340,6 +1340,7 @@ l_socket_cleanup:
 l_exit:
     if(!gs_exit) {    
         LOG_ERROR("Execution failed retry!");
+        sleep(1);
         goto l_start;
     }
     
