@@ -428,10 +428,10 @@ l_start:
     redisAsyncSetDisconnectCallback(gs_async_context,disconnectCallback);
 
     LOG_DETAILS("GET %s/%s", FLAG_KEY, LOG_LEVEL_FLAG_VALUE);
-    reply = redisCommand(sync_context,"GET %s/%s", FLAG_KEY, LOG_LEVEL_FLAG_VALUE);
+    reply = redisCommand(gs_sync_context,"GET %s/%s", FLAG_KEY, LOG_LEVEL_FLAG_VALUE);
 
     if(NULL == reply) {
-        LOG_ERROR("Failed to sync query redis %s", sync_context->errstr);
+        LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
         goto l_free_async_redis;
     }
     

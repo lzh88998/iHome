@@ -380,7 +380,7 @@ int draw_sensor_name(unsigned char index, char* value) {
 
     x_start = 2;
     x_end = 82;
-    y_start = 60 * index + 6;
+    y_start = index * 60 + 6;
     y_end = index * 60 + 31;
 
     LOG_DETAILS("Sensor name location: %d %d %d %d", x_start, y_start, x_end, y_end);
@@ -562,8 +562,8 @@ int draw_sw_name(unsigned char index, char* value) {
     unsigned int x_start, y_start, x_end, y_end;
     unsigned char font_size = 32;
 
-    x_start = 79 * index + 91;
-    x_end = 79 * index + 162;
+    x_start = 79 * (index % 3) + 91;
+    x_end = 79 * (index % 3) + 162;
 
     if(index >= 3) {
         y_start = 152;

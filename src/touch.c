@@ -236,11 +236,13 @@ l_start:
                     LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
                     goto l_free_redis;
                 }
+                
                 LOG_DETAILS("Get log level returned")
+                
                 if(NULL != reply->str) {
                     LOG_DETAILS("%s", reply->str);
                     if(0 > log_set_level(reply->str)) {
-                        LOG_ERROR("Invalid log option: %s", reply->str);
+                        LOG_WARNING("Invalid log option: %s", reply->str);
                     } else {
                         freeReplyObject(reply);
 
@@ -260,11 +262,12 @@ l_start:
 
                 // Check exit flag
                 LOG_DEBUG("Check exit flag")
-                reply = redisCommand(gs_sync_context,"GET %s/%s", FLAG_KEY, serv_ip);
+                reply = redisCommand(gs_sync_context,"GET %s/%s/%s", FLAG_KEY, serv_ip, EXIT_FLAG_VALUE);
                 if(NULL == reply) {
                     LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
                     goto l_free_redis;
                 }
+                
                 if(NULL != reply->str) {
                     LOG_DETAILS("%s", reply->str);
                     if(0 == strcmp(EXIT_FLAG_VALUE, reply->str)) {
@@ -273,7 +276,7 @@ l_start:
                         freeReplyObject(reply);
                         
                         // delete the flag ensure not find it next start
-                        reply = redisCommand(gs_sync_context,"DEL %s/%s", FLAG_KEY, serv_ip);
+                        reply = redisCommand(gs_sync_context,"DEL %s/%s/%s", FLAG_KEY, serv_ip, EXIT_FLAG_VALUE);
                         if(NULL == reply) {
                             LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
                             goto l_free_redis;
@@ -281,6 +284,36 @@ l_start:
                         if(NULL != reply->str) {
                             LOG_DETAILS("%s", reply->str);
                         }
+                    }
+                }
+                
+                freeReplyObject(reply);
+
+                // Check reset flag
+                LOG_DEBUG("Check reset flag")
+                reply = redisCommand(gs_sync_context,"GET %s/%s/%s", FLAG_KEY, serv_ip, RESET_FLAG_VALUE);
+                if(NULL == reply) {
+                    LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+                    goto l_free_redis;
+                }
+                
+                if(NULL != reply->str) {
+                    LOG_DETAILS("%s", reply->str);
+                    if(0 == strcmp(RESET_FLAG_VALUE, reply->str)) {
+                        freeReplyObject(reply);
+                        
+                        // delete the flag ensure not find it next start
+                        reply = redisCommand(gs_sync_context,"DEL %s/%s/%s", FLAG_KEY, serv_ip, RESET_FLAG_VALUE);
+                        if(NULL == reply) {
+                            LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+                            goto l_free_redis;
+                        }
+                        if(NULL != reply->str) {
+                            LOG_DETAILS("%s", reply->str);
+                        }
+
+                        freeReplyObject(reply);
+                        goto l_free_redis;
                     }
                 }
                 
