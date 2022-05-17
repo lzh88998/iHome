@@ -304,8 +304,8 @@ l_start:
                 print_usage(argc, argv);
                 return -3;
             }
-            redis_ip = REDIS_IP;
-            redis_port = REDIS_PORT;
+            redis_ip = argv[1];
+            redis_port = atoi(argv[2]);
             break;
         default:
             print_usage(argc, argv);

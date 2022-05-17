@@ -26,7 +26,7 @@
 
 #define REDIS_MESSAGE_TYPE      "pmessage"
 
-#define EXIT_FLAG_KEY           "godown_keeper"
+#define EXIT_FLAG_KEY           "godown_keeper/exit"
 #define EXIT_FLAG_VALUE         "exit"
 #define LOG_LEVEL_FLAG_KEY      "godown_keeper/log_level"
 
@@ -86,6 +86,7 @@ void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
                     if(NULL != reply->element[2] && NULL != reply->element[2]->str) {
                         if(0 == strcmp(EXIT_FLAG_KEY, reply->element[2]->str)) {
                             if(NULL != reply->element[3] && 0 == strcmp(EXIT_FLAG_VALUE, reply->element[3]->str)) {
+                                gs_exit = 1;
                                 redisAsyncDisconnect(c);
                             }
                         } else if(0 == strcmp(LOG_LEVEL_FLAG_KEY, reply->element[2]->str)) {

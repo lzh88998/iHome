@@ -1,4 +1,4 @@
-TARGET=cargador godown_keeper touch touch_processor sensor lcd celsius_converter
+TARGET=cargador godown_keeper touch touch_processor sensor lcd celsius_converter coordinator
 OBJ=log.o to_socket.o 
 
 STLIB_MAKE_CMD=$(AR) rcs
@@ -59,8 +59,11 @@ lcd:src/lcd.c $(HIREDIS_LIB) $(COMMON_LIB)
 celsius_converter:src/celsius_converter.c $(HIREDIS_LIB) $(COMMON_LIB)
 	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS) -lm
 
+coordinator:src/coordinator.c $(HIREDIS_LIB) $(COMMON_LIB)
+	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS)
+
 clean:
-	rm -rf *.o *.a cargador godown_keeper touch touch_processor sensor lcd sync celsius_converter
+	rm -rf *.o *.a $(TARGET)
 	rm -rf src/*.o
 
 dep:
