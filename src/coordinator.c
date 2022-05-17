@@ -84,7 +84,7 @@ typedef struct {
  * 
  */
 int main(int argc, char **argv) {
-    int status = 0, options = 0, ret = 0;
+    int status = 0, ret = 0;
     int godown_keeper_pid = -1, celsius_converter_pid = -1, touch_processor_pid = -1;
 
     const char* redis_ip = REDIS_IP;
@@ -390,7 +390,7 @@ int main(int argc, char **argv) {
                 LOG_ERROR("[%d]Fail reason: %s", getpid(), strerror(errno));
                 goto l_free_cargador;
             } else if(0 == cargador_pids[cargador_count]) {
-                ret = execl(CARGADOR_START_CMD, CARGADOR_START_CMD, cargador_pids[cargador_count].ip_addr, cargador_pids[cargador_count].port, NULL);
+                ret = execl(CARGADOR_START_CMD, CARGADOR_START_CMD, cargador_items[cargador_count].ip_addr, cargador_items[cargador_count].port, NULL);
                 if(0 > ret) {
                     LOG_ERROR("[%d]Failed to execute process! Returned %d", getpid(), ret);
                     LOG_ERROR("[%d]Fail reason: %s", getpid(), strerror(errno));
@@ -485,7 +485,7 @@ l_free_sensor:
         if(NULL == reply) {
             LOG_ERROR("Failed to sync query redis %s\n", sync_context->errstr);
             // kill godown_keeper
-            if(0 > kill(cargador_items[i], 0)) {
+            if(0 > kill(cargador_pids[i], 0)) {
                 LOG_ERROR("Failed to kill touch_processor");
             }
             continue;
@@ -507,7 +507,7 @@ l_free_cargador:
         if(NULL == reply) {
             LOG_ERROR("Failed to sync query redis %s\n", sync_context->errstr);
             // kill godown_keeper
-            if(0 > kill(cargador_items[i], 0)) {
+            if(0 > kill(cargador_pids[i], 0)) {
                 LOG_ERROR("Failed to kill touch_processor");
             }
             continue;
@@ -528,7 +528,7 @@ l_free_touch:
         if(NULL == reply) {
             LOG_ERROR("Failed to sync query redis %s\n", sync_context->errstr);
             // kill godown_keeper
-            if(0 > kill(touch_items[i], 0)) {
+            if(0 > kill(touch_pids[i], 0)) {
                 LOG_ERROR("Failed to kill touch_processor");
             }
             continue;
@@ -537,7 +537,7 @@ l_free_touch:
         LOG_DEBUG("[%d]Stop touch %d result: %s\n", getpid(), i, reply->str);
         freeReplyObject(reply);
 
-        waitpid(touch_items[i], &status, WUNTRACED);
+        waitpid(touch_pids[i], &status, WUNTRACED);
     }
 
     LOG_DEBUG("[%d]Exited touches", getpid());
