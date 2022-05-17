@@ -479,31 +479,31 @@ int main(int argc, char **argv) {
     sleep(5);
     
 l_free_sensor:
-    LOG_DEBUG("[%d]Exiting %d cargadors...", getpid(), cargador_count);
-    for(size_t i = 0; i < cargador_count; i++) {
-        reply = redisCommand(sync_context,"PUBLISH %s/%s %s", CARGADOR_FLAG, cargador_items[i].ip_addr, EXIT_FLAG_VALUE, EXIT_FLAG_VALUE);
+    LOG_DEBUG("[%d]Exiting %d sensor...", getpid(), sensor_count);
+    for(size_t i = 0; i < sensor_count; i++) {
+        reply = redisCommand(sync_context,"PUBLISH %s/%s/%s/%s %s", SENSOR_FLAG, sensor_items[i].ip_addr, sensor_items[i].port, EXIT_FLAG_VALUE, EXIT_FLAG_VALUE);
         if(NULL == reply) {
             LOG_ERROR("Failed to sync query redis %s\n", sync_context->errstr);
             // kill godown_keeper
-            if(0 > kill(cargador_pids[i], 0)) {
+            if(0 > kill(sensor_pids[i], 0)) {
                 LOG_ERROR("Failed to kill touch_processor");
             }
             continue;
         }
         
-        LOG_DEBUG("[%d]Stop cargadors %d result: %s\n", getpid(), i, reply->str);
+        LOG_DEBUG("[%d]Stop sensors %d result: %s\n", getpid(), i, reply->str);
         freeReplyObject(reply);
 
-        waitpid(cargador_pids[i], &status, WUNTRACED);
+        waitpid(sensor_pids[i], &status, WUNTRACED);
     }
 
-    LOG_DEBUG("[%d]Exited cargadors", getpid());
+    LOG_DEBUG("[%d]Exited sensor", getpid());
 
 
 l_free_cargador:
     LOG_DEBUG("[%d]Exiting %d cargadors...", getpid(), cargador_count);
     for(size_t i = 0; i < cargador_count; i++) {
-        reply = redisCommand(sync_context,"PUBLISH %s/%s %s", CARGADOR_FLAG, cargador_items[i].ip_addr, EXIT_FLAG_VALUE, EXIT_FLAG_VALUE);
+        reply = redisCommand(sync_context,"PUBLISH %s/%s/%s %s", CARGADOR_FLAG, cargador_items[i].ip_addr, EXIT_FLAG_VALUE, EXIT_FLAG_VALUE);
         if(NULL == reply) {
             LOG_ERROR("Failed to sync query redis %s\n", sync_context->errstr);
             // kill godown_keeper
@@ -524,7 +524,7 @@ l_free_cargador:
 l_free_touch:
     LOG_DEBUG("[%d]Exiting %d touches...", getpid(), touch_count);
     for(size_t i = 0; i < touch_count; i++) {
-        reply = redisCommand(sync_context,"PUBLISH %s/%s %s", TOUCH_FLAG, touch_items[i].ip_addr, EXIT_FLAG_VALUE, EXIT_FLAG_VALUE);
+        reply = redisCommand(sync_context,"PUBLISH %s/%s/%s %s", TOUCH_FLAG, touch_items[i].ip_addr, EXIT_FLAG_VALUE, EXIT_FLAG_VALUE);
         if(NULL == reply) {
             LOG_ERROR("Failed to sync query redis %s\n", sync_context->errstr);
             // kill godown_keeper
@@ -545,7 +545,7 @@ l_free_touch:
 l_free_lcd:
     LOG_DEBUG("[%d]Exiting %d lcds...", getpid(), lcd_count);
     for(size_t i = 0; i < lcd_count; i++) {
-        reply = redisCommand(sync_context,"PUBLISH %s/%s %s", LCD_FLAG, lcd_items[i].ip_addr, EXIT_FLAG_VALUE, EXIT_FLAG_VALUE);
+        reply = redisCommand(sync_context,"PUBLISH %s/%s/%s %s", LCD_FLAG, lcd_items[i].ip_addr, EXIT_FLAG_VALUE, EXIT_FLAG_VALUE);
         if(NULL == reply) {
             LOG_ERROR("Failed to sync query redis %s\n", sync_context->errstr);
             // kill godown_keeper
