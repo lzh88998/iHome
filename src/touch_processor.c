@@ -115,7 +115,6 @@ void setLogLevelCallback(redisAsyncContext *c, void *r, void *privdata) {
     UNUSED(privdata);
 
     redisReply *reply = r;
-    const char* ch = NULL;
     
     if (NULL == reply) {
         if (c->errstr) {
@@ -126,8 +125,8 @@ void setLogLevelCallback(redisAsyncContext *c, void *r, void *privdata) {
     }
 
     if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        if(0 > log_set_level(ch)) {
-            LOG_WARNING("Warning: invalid log level %s!", ch);
+        if(0 > log_set_level(reply->element[2]->str)) {
+            LOG_WARNING("Warning: invalid log level %s!", reply->element[2]->str);
         }
     } else {
         LOG_WARNING("Warning: setLogLevelCallback does not have valid value!");
