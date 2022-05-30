@@ -446,7 +446,7 @@ l_start:
 
     freeReplyObject(reply);
 
-    LOG_DETAILS("HGETALL %s", FLAG_KEY);
+    LOG_DETAILS("SMEMBERS %s", FLAG_KEY);
     reply = redisCommand(gs_sync_context,"SMEMBERS %s", FLAG_KEY);
     if(NULL == reply) {
         LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);

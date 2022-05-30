@@ -270,6 +270,11 @@ int sendRecvCommand(long idx, const char* v) {
         LOG_WARNING("Send receive warning, index %ld out of bound!", idx);
         return CARGADOR_SND_RCV_OK;
     }
+    
+    if(NULL == v) {
+        LOG_WARNING("Send receive warning, index %ld received NULL value!", idx);
+        return CARGADOR_SND_RCV_OK;
+    }
         
     status = (0 != strcmp("0", v) ? 0x00 : 0x20);
     
