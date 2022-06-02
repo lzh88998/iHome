@@ -1,0 +1,12 @@
+[Unit]
+Description=Cargador is a bridge for configuration stored in redis and controller  %I
+After=redis
+
+[Service]
+Type=simple
+PIDFile=/var/run/cargador/%i.pid
+ExecStart=/usr/local/bin/cargador %i 5000
+ExecStop=/usr/bin/redis-cli publish cargador/%i/exit exit
+
+[Install]
+WantedBy=multi-user.target

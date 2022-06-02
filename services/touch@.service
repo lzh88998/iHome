@@ -1,0 +1,12 @@
+[Unit]
+Description=Touch is used to receive touch event from %i and cache the data for about 300 ms to reduce load on redis side then publish event to redis
+After=redis
+
+[Service]
+Type=simple
+PIDFile=/var/run/touch/%i.pid
+ExecStart=/usr/local/bin/touch %i 5000
+ExecStop=/usr/bin/redis-cli publish touch/%i/exit exit
+
+[Install]
+WantedBy=multi-user.target

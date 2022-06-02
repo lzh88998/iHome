@@ -1,0 +1,12 @@
+[Unit]
+Description=Sensor 5003 is used to receive light and temperature information from lcd sensors on port 5003
+After=redis
+
+[Service]
+Type=simple
+PIDFile=/var/run/sensor_5003/%i.pid
+ExecStart=/usr/local/bin/sensor %i 5003
+ExecStop=/usr/bin/redis-cli publish sensor/%i/5003/exit exit
+
+[Install]
+WantedBy=multi-user.target

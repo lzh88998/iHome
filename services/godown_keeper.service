@@ -1,0 +1,12 @@
+[Unit]
+Description=Godown keeper is used to save event received in redis pub/sub to redis key value pairs
+After=redis
+
+[Service]
+Type=simple
+PIDFile=/var/run/godown_keeper.pid
+ExecStart=/usr/local/bin/godown_keeper
+ExecStop=/usr/bin/redis-cli publish godown_keeper/exit exit
+
+[Install]
+WantedBy=multi-user.target

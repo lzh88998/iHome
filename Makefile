@@ -69,3 +69,5 @@ clean:
 dep:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -MM src/*.c
 
+install: $(TARGET)
+	cp $(TARGET) /usr/local/bin
