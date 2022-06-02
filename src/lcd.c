@@ -1030,7 +1030,7 @@ l_start:
 #ifndef _WIN32
     signal(SIGPIPE, SIG_IGN);
 #endif
-    struct event_base *base = event_base_new();;
+    struct event_base *base = NULL;
     struct timeval timeout = { 0, 100000 }; 
 
     char* serv_ip;
@@ -1148,6 +1148,7 @@ l_start:
         goto l_free_async_redis;
     }
 
+    base = event_base_new();
     if(REDIS_OK != redisLibeventAttach(gs_async_context,base)) {
         LOG_ERROR("Error: error redis libevent attach!");
         goto l_free_async_redis;
