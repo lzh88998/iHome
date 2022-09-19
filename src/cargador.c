@@ -84,6 +84,12 @@
 #include "to_socket.h"
 
 /*
+ * 
+ */
+#define TRUE                    1
+#define FALSE                   0
+
+/*
  * Default address and port for redis 
  * connection
  */
@@ -122,18 +128,14 @@ static int gs_exit = 0;
 #define CARGADOR_SND_RCV_OK         0
 
 /*
- * Used to pass parameters to subscribeCallback
- */
-static const char* gs_idx_name[MAX_OUTPUT_PIN_COUNT] =  {
-                                                            "0", "1", "2", "3",
-                                                            "4", "5", "6", "7",
-                                                            "8", "9", "10", "11",
-                                                            "12", "13", "14", "15",
-                                                            "16", "17", "18", "19",
-                                                            "20", "21", "22", "23",
-                                                            "24", "25", "26", "27",
-                                                            "28", "29", "30", "31",
-                                                        };
+ * Use this linked list format to describe PINs that depends on 
+ * same redis topic
+ */                                                        
+typedef struct linked_list_node {
+    unsigned char pin_id;
+    unsigned char topic_idx;
+    struct linked_list_node* pNext;
+} list_node;
 
 /*
  * exitCallback is used to process exit notification
@@ -161,6 +163,10 @@ void exitCallback(redisAsyncContext *c, void *r, void *privdata) {
     
     LOG_DETAILS("sub reply type: %d", reply->type);
     LOG_DETAILS("sub reply element count: %d", reply->elements);
+
+    for(size_t i = 0; i < reply->elements; i++) {
+        LOG_DETAILS("sub reply element %d: %s", i, reply->element[i]->str);
+    }
 
     if(3 == reply->elements && reply->element[1] && reply->element[1]->str && reply->element[2] && reply->element[2]->str) {
         if(0 == strcmp(EXIT_FLAG_VALUE, reply->element[2]->str)) { 
@@ -198,6 +204,10 @@ void resetCallback(redisAsyncContext *c, void *r, void *privdata) {
     
     LOG_DETAILS("sub reply type: %d", reply->type);
     LOG_DETAILS("sub reply element count: %d", reply->elements);
+    
+    for(size_t i = 0; i < reply->elements; i++) {
+        LOG_DETAILS("sub reply element %d: %s", i, reply->element[i]->str);
+    }
 
     if(3 == reply->elements && reply->element[1] && reply->element[1]->str && reply->element[2] && reply->element[2]->str) {
         if(0 == strcmp(RESET_FLAG_VALUE, reply->element[2]->str)) { 
@@ -237,6 +247,10 @@ void setLogLevelCallback(redisAsyncContext *c, void *r, void *privdata) {
     LOG_DETAILS("sub reply type: %d", reply->type);
     LOG_DETAILS("sub reply element count: %d", reply->elements);
 
+    for(size_t i = 0; i < reply->elements; i++) {
+        LOG_DETAILS("sub reply element %d: %s", i, reply->element[i]->str);
+    }
+
     if(3 == reply->elements && reply->element[1] && reply->element[1]->str && reply->element[2] && reply->element[2]->str) { 
         if(LOG_SET_LEVEL_OK != log_set_level(reply->element[2]->str)) {
             LOG_WARNING("Invalid log option: %s", reply->element[2]->str);
@@ -264,15 +278,15 @@ void setLogLevelCallback(redisAsyncContext *c, void *r, void *privdata) {
  * this usually caused by socket failure.
  * 
  */
-int sendRecvCommand(long idx, const char* v) {
+int sendRecvCommand(unsigned char idx, const char* v) {
     unsigned char status;
     if(idx >= MAX_OUTPUT_PIN_COUNT) {
-        LOG_WARNING("Send receive warning, index %ld out of bound!", idx);
+        LOG_WARNING("Send receive warning, index %d out of bound!", idx);
         return CARGADOR_SND_RCV_OK;
     }
     
     if(NULL == v) {
-        LOG_WARNING("Send receive warning, index %ld received NULL value!", idx);
+        LOG_WARNING("Send receive warning, index %d received NULL value!", idx);
         return CARGADOR_SND_RCV_OK;
     }
         
@@ -326,7 +340,7 @@ int sendRecvCommand(long idx, const char* v) {
  */
 void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
-    char* ch = (char*)privdata;
+    list_node* node = (list_node*)privdata;
     
     LOG_DEBUG("Subscribe callback!");
     if (reply == NULL) {
@@ -340,7 +354,11 @@ void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
     
     LOG_DETAILS("Subscribe reply type: %d", reply->type);
     LOG_DETAILS("Subscribe reply elements: %zd", reply->elements);
-    LOG_DETAILS("Subscribe parameters: %s", ch);
+    LOG_DETAILS("Subscribe parameters: %d", node->pin_id);
+
+    for(size_t i = 0; i < reply->elements; i++) {
+        LOG_DETAILS("sub reply element %d: %s", i, reply->element[i]->str);
+    }
 
     if(3 != reply->elements) {
         LOG_ERROR("Error: Unexpected format!");
@@ -353,9 +371,13 @@ void subscribeCallback(redisAsyncContext *c, void *r, void *privdata) {
         return;
     }
     
-    if(CARGADOR_SND_RCV_OK != sendRecvCommand(atoi(ch), reply->element[2]->str)) {
-        LOG_ERROR("Error: failed to update status for PIN %d, %s", atoi(ch), reply->element[2]->str);
-        redisAsyncDisconnect(c);
+    while(node) {
+        if(CARGADOR_SND_RCV_OK != sendRecvCommand(node->pin_id, reply->element[2]->str)) {
+            LOG_ERROR("Error: failed to update status for PIN %d, %s", node->pin_id, reply->element[2]->str);
+            redisAsyncDisconnect(c);
+        }
+        
+        node = node->pNext;
     }
 
     LOG_DEBUG("Subscribe finished!");
@@ -491,6 +513,15 @@ l_start:
     
     redisContext *sync_context = NULL;
     
+    redisReply* reply[MAX_OUTPUT_PIN_COUNT];
+    list_node*  nodes[MAX_OUTPUT_PIN_COUNT];
+    
+    // Initialize reply object
+    for(int i = 0; i < MAX_OUTPUT_PIN_COUNT; i++) {
+        reply[i] = NULL;
+        nodes[i] = NULL;
+    }
+    
     LOG_INFO("===================Service start!===================");
     LOG_INFO("Parsing parameters!");
         
@@ -537,6 +568,7 @@ l_start:
         goto l_socket_cleanup;
     }
   
+    // Receive initial byte to activate keep alive of the remote device
     ret = to_recv(gs_socket, &temp, 1, 0);
     if(0 > ret) {
         LOG_ERROR("Error receiving initial data! Error code: %s", strerror(errno));
@@ -556,13 +588,14 @@ l_start:
         goto l_free_sync_redis;
     }
 
-    redisReply* reply = redisCommand(sync_context,"PING");
-    if(NULL == reply) {
+    reply[0] = redisCommand(sync_context,"PING");
+    if(NULL == reply[0]) {
         LOG_ERROR("Failed to sync query redis %s", sync_context->errstr);
         goto l_free_sync_redis;
     }
-    LOG_DEBUG("PING: %s", reply->str);
-    freeReplyObject(reply);
+    LOG_DEBUG("PING: %s", reply[0]->str);
+    freeReplyObject(reply[0]);
+    reply[0] = NULL;
 
     LOG_INFO("Connected to redis in sync mode");
     
@@ -586,66 +619,131 @@ l_start:
 
     redisAsyncSetConnectCallback(gs_async_context,connectCallback);
     redisAsyncSetDisconnectCallback(gs_async_context,disconnectCallback);
+
+    redisAsyncCommand(gs_async_context, exitCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, EXIT_FLAG_VALUE);
+    redisAsyncCommand(gs_async_context, resetCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, RESET_FLAG_VALUE);
+    redisAsyncCommand(gs_async_context, setLogLevelCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
     
     LOG_DETAILS("GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
-    reply = redisCommand(sync_context,"GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
+    reply[0] = redisCommand(sync_context,"GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
 
-    if(NULL == reply) {
+    if(NULL == reply[0]) {
         LOG_ERROR("Failed to sync query redis %s", sync_context->errstr);
         goto l_free_async_redis;
     }
     
-    if(LOG_SET_LEVEL_OK != log_set_level(reply->str)) {
-        LOG_WARNING("Failed to set log level %s", reply->str);
+    if(NULL != reply[0]->str) {
+        if(LOG_SET_LEVEL_OK != log_set_level(reply[0]->str)) {
+            LOG_WARNING("Failed to set log level %s", reply[0]->str);
+        }
     }
 
-    freeReplyObject(reply);
+    freeReplyObject(reply[0]);
+    reply[0] = NULL;
 
+    // load topics from redis hashset
     for(int i = 0; i < MAX_OUTPUT_PIN_COUNT; i++ ) {
         LOG_DETAILS("HGET %s/%s %d", FLAG_KEY, serv_ip, i);
-        reply = redisCommand(sync_context,"HGET %s/%s %d", FLAG_KEY, serv_ip, i);
+        reply[i] = redisCommand(sync_context,"HGET %s/%s %d", FLAG_KEY, serv_ip, i);
         if(NULL == reply) {
             LOG_ERROR("Failed to sync query redis %s", sync_context->errstr);
-            goto l_free_async_redis;
+            goto l_free_sync_redis_reply;
         }
         
-        LOG_DETAILS("HGET Result: %s", reply->str);
-        
-        if(NULL != reply->str) {
-            LOG_DETAILS("GET %s", reply->str);
-            redisReply* reply2 = redisCommand(sync_context,"GET %s", reply->str);
+        LOG_DETAILS("HGET Result: %s", reply[i]->str);
+    }
+    
+    // seek duplicate subscribe topics and convert to linked list
+    int topic_cnt = 0;
+    for(int i = 0; i < MAX_OUTPUT_PIN_COUNT; i++) {
+        int j = 0;
+        if(NULL == reply[i]->str)
+            continue;
             
-            if(NULL == reply2) {
-                LOG_ERROR("Failed to sync query redis %s", sync_context->errstr);
-                freeReplyObject(reply);
-                goto l_free_async_redis;
+        while(j < topic_cnt) {
+            if(0 == strcmp(reply[i]->str, reply[nodes[j]->topic_idx]->str)) {
+                break;
+            }
+            j++;
+        }
+        
+        if(j < topic_cnt) { 
+            // found duplicate topic
+            list_node* temp = nodes[j];
+            while(temp->pNext) {
+                temp = temp->pNext;
             }
             
-            LOG_DETAILS("GET %s", reply2->str);
-            
-            if(CARGADOR_SND_RCV_OK != sendRecvCommand(i, reply2->str)) {
+            temp->pNext = (list_node*)malloc(sizeof(list_node));
+            temp = temp->pNext;
+            temp->topic_idx = nodes[j]->topic_idx;
+            temp->pin_id = i;
+            temp->pNext = NULL;
+        } else {
+            // new topic
+            nodes[topic_cnt] = (list_node*)malloc(sizeof(list_node));
+            nodes[topic_cnt]->topic_idx = i;
+            nodes[topic_cnt]->pin_id = i;
+            nodes[topic_cnt]->pNext = NULL;
+            topic_cnt++;
+        }
+    }
+    
+    for(int i = 0; i < topic_cnt; i++) {
+        redisReply* tempReply = redisCommand(sync_context,"GET %s", reply[nodes[i]->topic_idx]->str);
+        if(NULL == tempReply) {
+            LOG_ERROR("Failed to sync query redis %s", sync_context->errstr);
+            goto l_free_linked_list;
+        }
+        
+        LOG_DETAILS("GET %s", tempReply->str);
+        
+        list_node* tempNode = nodes[i];
+        while(tempNode) {
+            if(CARGADOR_SND_RCV_OK != sendRecvCommand(tempNode->pin_id, tempReply->str)) {
                 LOG_ERROR("Error updating controller status");
-                freeReplyObject(reply);
-                freeReplyObject(reply2);
-                goto l_free_async_redis;
+                freeReplyObject(tempReply);
+                goto l_free_linked_list;
             }
-            
-            LOG_DETAILS("SUBSCRIBE %s", reply->str);
-            redisAsyncCommand(gs_async_context, subscribeCallback, (void*)gs_idx_name[i], "SUBSCRIBE %s", reply->str);
-            freeReplyObject(reply2);
+            tempNode = tempNode->pNext;
         }
+        freeReplyObject(tempReply);
         
-        freeReplyObject(reply);
+        LOG_DETAILS("SUBSCRIBE %s", reply[nodes[i]->topic_idx]->str);
+        redisAsyncCommand(gs_async_context, subscribeCallback, (void*)nodes[i], "SUBSCRIBE %s", reply[nodes[i]->topic_idx]->str);
+    }
+
+    for(int i = 0; i < MAX_OUTPUT_PIN_COUNT; i++) {
+        if(reply[i]) {
+            freeReplyObject(reply[i]);
+            reply[i] = NULL;
+        }
     }
 
     redisFree(sync_context);
     sync_context = NULL;
     
-    redisAsyncCommand(gs_async_context, exitCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, EXIT_FLAG_VALUE);
-    redisAsyncCommand(gs_async_context, resetCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, RESET_FLAG_VALUE);
-    redisAsyncCommand(gs_async_context, setLogLevelCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
-    
     event_base_dispatch(base);
+    
+l_free_linked_list:
+    for(int i = 0; i < MAX_OUTPUT_PIN_COUNT; i++) {
+        while(nodes[i]) {
+            list_node* temp = nodes[i];
+            nodes[i] = temp->pNext;
+            free(temp);
+        }
+        nodes[i] = NULL;
+    }
+
+
+l_free_sync_redis_reply:
+    for(int i = 0; i < MAX_OUTPUT_PIN_COUNT; i++) {
+        if(reply[i]) {
+            freeReplyObject(reply[i]);
+            reply[i] = NULL;
+        }
+    }
+
     
 l_free_async_redis:
     redisAsyncFree(gs_async_context);
