@@ -160,17 +160,16 @@ l_start:
     
     gs_socket = to_connect(serv_ip, serv_port);
     if(-1 == gs_socket) {
-        LOG_ERROR("Error connecting to controller!\n");
+        LOG_ERROR("Error connecting to sensor!\n");
         goto l_exit;
     }
     
- /* 
     if(0 > to_recv(gs_socket, &temp, 1, 0)) {
         LOG_ERROR("Error receiving initial data! %s\n", strerror(errno));
         goto l_socket_cleanup;
     }
-    LOG_INFO("Connected to controller, remote socket: %d\n", temp);
-*/    
+    
+    LOG_INFO("Connected to sensor, remote socket: %d\n", temp);
 
     LOG_INFO("Connecting to Redis...");
     gs_sync_context = redisConnectWithTimeout(redis_ip, redis_port, timeout);

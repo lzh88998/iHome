@@ -29,6 +29,14 @@
 #define REDIS_PORT                  6379
 
 /*
+ * LCD coordinates
+ */
+#define LCD_MIN_X                   0
+#define LCD_MIN_Y                   0
+#define LCD_MAX_X                   319
+#define LCD_MAX_Y                   239
+
+/*
  * Color constant used to draw things
  * on lcd
  */
@@ -43,7 +51,14 @@
  * lcd this makes change the background
  * easier
  */
-#define BACKGROUND_COLOR            COLOR_BLUE
+#define BG_COLOR                    COLOR_BLACK
+
+/*
+ * Here define the foreground color of
+ * lcd this makes change the background
+ * easier
+ */
+#define FG_COLOR                    COLOR_WHITE
 
 /*
  * Return value for sending command to lcd
@@ -57,7 +72,7 @@
  * when last update happens greater than 
  * this interval value
  */
-#define SENSOR_VALUE_INTERVAL_MS    5000
+#define SENSOR_VALUE_INTERVAL_MS    3000
 
 /*
  * Identifier used in redis keys for this
@@ -68,11 +83,359 @@
 /*
  * Configuration items in redis hash
  */
-#define SENSOR_NAME_TOPIC           "sensor_name_"
-#define SENSOR_TOPIC                "sensor_"
+#define SWITCH_TOPIC                "switch"
+#define SENSOR_TOPIC                "sensor"
 #define BRIGHTNESS_TOPIC            "brightness"
-#define SW_NAME_TOPIC               "switch_name_"
-#define SW_TOPIC                    "switch_"
+#define AREA1_TOPIC                 "area1"
+#define AREA2_TOPIC                 "area2"
+#define NAME_TOPIC                  "name"
+#define TEMP_TOPIC                  "temp"
+#define TARGET_TEMP_TOPIC           "target_temp"
+
+/*
+ * Line seperate SW and display info
+ */
+#define LCD_FUNCTION_SEP_LINE_X_START       160
+#define LCD_FUNCTION_SEP_LINE_X_END         160
+#define LCD_FUNCTION_SEP_LINE_Y_START       0
+#define LCD_FUNCTION_SEP_LINE_Y_END         239
+
+/*
+ * Time display area
+ */
+#define TIME_X_START                        0
+#define TIME_X_END                          159
+#define TIME_Y_START                        0
+#define TIME_Y_END                          59
+
+/*
+ * Time font_size
+ */
+#define TIME_FONT_SIZE                      48
+
+/*
+ * Line seperate time and weather forcast
+ */
+#define TIME_WEATHER_SEP_LINE_X_START       0
+#define TIME_WEATHER_SEP_LINE_X_END         160
+#define TIME_WEATHER_SEP_LINE_Y_START       60
+#define TIME_WEATHER_SEP_LINE_Y_END         60
+
+/*
+ * Forcast display area
+ */
+#define FORCAST_X_START                     0
+#define FORCAST_X_END                       79
+#define FORCAST_Y_START                     61
+#define FORCAST_Y_END                       139
+
+/*
+ * Time font_size
+ */
+#define FORCAST_FONT_SIZE                   32
+
+/*
+ * Weather forcast and detail data seperate line
+ */
+#define FORCAST_DATA_SEP_LINE_X_START       80
+#define FORCAST_DATA_SEP_LINE_X_END         80
+#define FORCAST_DATA_SEP_LINE_Y_START       60
+#define FORCAST_DATA_SEP_LINE_Y_END         140
+
+/*
+ * Forcast temperature display area
+ */
+#define FORCAST_TEMP_X_START                81
+#define FORCAST_TEMP_X_END                  159
+#define FORCAST_TEMP_Y_START                61
+#define FORCAST_TEMP_Y_END                  79
+
+/*
+ * Forcast temperature font_size
+ */
+#define FORCAST_TEMP_FONT_SIZE              16
+
+/*
+ * Weather forcast detail temperature humidity seperate line
+ */
+#define FORCAST_TEMP_SEP_LINE_X_START       80
+#define FORCAST_TEMP_SEP_LINE_X_END         160
+#define FORCAST_TEMP_SEP_LINE_Y_START       80
+#define FORCAST_TEMP_SEP_LINE_Y_END         80
+
+/*
+ * Forcast humidity display area
+ */
+#define FORCAST_HUMIDITY_X_START            81
+#define FORCAST_HUMIDITY_X_END              159
+#define FORCAST_HUMIDITY_Y_START            81
+#define FORCAST_HUMIDITY_Y_END              99
+
+/*
+ * Forcast humidity font_size
+ */
+#define FORCAST_HUMIDITY_FONT_SIZE          16
+
+/*
+ * Weather forcast detail humidity wind seperate line
+ */
+#define FORCAST_HUMIDITY_SEP_LINE_X_START   80
+#define FORCAST_HUMIDITY_SEP_LINE_X_END     160
+#define FORCAST_HUMIDITY_SEP_LINE_Y_START   100
+#define FORCAST_HUMIDITY_SEP_LINE_Y_END     100
+
+/*
+ * Forcast wind display area
+ */
+#define FORCAST_WIND_X_START                81
+#define FORCAST_WIND_X_END                  159
+#define FORCAST_WIND_Y_START                101
+#define FORCAST_WIND_Y_END                  119
+
+/*
+ * Forcast wind font_size
+ */
+#define FORCAST_WIND_FONT_SIZE              16
+
+/*
+ * Weather forcast detail wind AQI seperate line
+ */
+#define FORCAST_WIND_SEP_LINE_X_START       80
+#define FORCAST_WIND_SEP_LINE_X_END         160
+#define FORCAST_WIND_SEP_LINE_Y_START       120
+#define FORCAST_WIND_SEP_LINE_Y_END         120
+
+/*
+ * Forcast AQI display area
+ */
+#define FORCAST_AQI_X_START                 81
+#define FORCAST_AQI_X_END                   159
+#define FORCAST_AQI_Y_START                 121
+#define FORCAST_AQI_Y_END                   139
+
+/*
+ * Forcast AQI font_size
+ */
+#define FORCAST_AQI_FONT_SIZE               16
+
+/*
+ * Weather forcast and area 1 seperate line
+ */
+#define FORCAST_AREA1_SEP_LINE_X_START      0
+#define FORCAST_AREA1_SEP_LINE_X_END        160
+#define FORCAST_AREA1_SEP_LINE_Y_START      140
+#define FORCAST_AREA1_SEP_LINE_Y_END        140
+
+/*
+ * Area 1 name display area
+ */
+#define AREA1_NAME_X_START                 0
+#define AREA1_NAME_X_END                   49
+#define AREA1_NAME_Y_START                 141
+#define AREA1_NAME_Y_END                   159
+
+/*
+ * Area 1 name font_size
+ */
+#define AREA1_NAME_FONT_SIZE               16
+
+/*
+ * Area 1 temperature display area
+ */
+#define AREA1_TEMP_X_START                 55
+#define AREA1_TEMP_X_END                   120
+#define AREA1_TEMP_Y_START                 141
+#define AREA1_TEMP_Y_END                   159
+
+/*
+ * Area 1 temperature font_size
+ */
+#define AREA1_TEMP_FONT_SIZE               16
+
+/*
+ * Area 1 brightness display area
+ */
+#define AREA1_BRIGHTNESS_X_START           125
+#define AREA1_BRIGHTNESS_X_END             159
+#define AREA1_BRIGHTNESS_Y_START           141
+#define AREA1_BRIGHTNESS_Y_END             159
+
+/*
+ * Area 1 brightness font_size
+ */
+#define AREA1_BRIGHTNESS_FONT_SIZE         16
+
+/*
+ * Area 1 and area 2 seperate line
+ */
+#define AREA1_AREA2_SEP_LINE_X_START        0
+#define AREA1_AREA2_SEP_LINE_X_END          160
+#define AREA1_AREA2_SEP_LINE_Y_START        160
+#define AREA1_AREA2_SEP_LINE_Y_END          160
+
+/*
+ * Area 2 name display area
+ */
+#define AREA2_NAME_X_START                 0
+#define AREA2_NAME_X_END                   49
+#define AREA2_NAME_Y_START                 161
+#define AREA2_NAME_Y_END                   179
+
+/*
+ * Area 2 name font_size
+ */
+#define AREA2_NAME_FONT_SIZE               16
+
+/*
+ * Area 2 temperature display area
+ */
+#define AREA2_TEMP_X_START                 55
+#define AREA2_TEMP_X_END                   120
+#define AREA2_TEMP_Y_START                 161
+#define AREA2_TEMP_Y_END                   179
+
+/*
+ * Area 2 temperature font_size
+ */
+#define AREA2_TEMP_FONT_SIZE               16
+
+/*
+ * Area 2 brightness display area
+ */
+#define AREA2_BRIGHTNESS_X_START           125
+#define AREA2_BRIGHTNESS_X_END             159
+#define AREA2_BRIGHTNESS_Y_START           161
+#define AREA2_BRIGHTNESS_Y_END             179
+
+/*
+ * Area 2 brightness font_size
+ */
+#define AREA2_BRIGHTNESS_FONT_SIZE         16
+
+/*
+ * Area 2 and target temperature seperate line
+ */
+#define AREA2_TARGET_SEP_LINE_X_START       0
+#define AREA2_TARGET_SEP_LINE_X_END         160
+#define AREA2_TARGET_SEP_LINE_Y_START       180
+#define AREA2_TARGET_SEP_LINE_Y_END         180
+
+/*
+ * Target temperature minus seperate line
+ */
+#define TARGET_MINUS_SEP_LINE_X_START       30
+#define TARGET_MINUS_SEP_LINE_X_END         30
+#define TARGET_MINUS_SEP_LINE_Y_START       180
+#define TARGET_MINUS_SEP_LINE_Y_END         239
+
+/*
+ * Target temperature minus display area
+ */
+#define TARGET_MINUS_X_START                0
+#define TARGET_MINUS_X_END                  29
+#define TARGET_MINUS_Y_START                181
+#define TARGET_MINUS_Y_END                  239
+
+/*
+ * Target temperature minus font_size
+ */
+#define TARGET_MINUS_FONT_SIZE              48
+
+/*
+ * Target temperature plus seperate line
+ */
+#define TARGET_PLUS_SEP_LINE_X_START        130
+#define TARGET_PLUS_SEP_LINE_X_END          130
+#define TARGET_PLUS_SEP_LINE_Y_START        180
+#define TARGET_PLUS_SEP_LINE_Y_END          239
+
+/*
+ * Target temperature plus display area
+ */
+#define TARGET_PLUS_X_START                 131
+#define TARGET_PLUS_X_END                   159
+#define TARGET_PLUS_Y_START                 181
+#define TARGET_PLUS_Y_END                   239
+
+/*
+ * Target temperature plus font_size
+ */
+#define TARGET_PLUS_FONT_SIZE               48
+
+/*
+ * Target temperature plus display area
+ */
+#define TARGET_TEMP_X_START                 31
+#define TARGET_TEMP_X_END                   129
+#define TARGET_TEMP_Y_START                 181
+#define TARGET_TEMP_Y_END                   239
+
+/*
+ * Target temperature plus font_size
+ */
+#define TARGET_TEMP_FONT_SIZE               24
+
+/*
+ * Switch area X start location
+ */
+#define SWITCH_X_START                      160
+
+/*
+ * Switch area X half location
+ */
+#define SWITCH_X_HALF                       240
+
+/*
+ * Switch area X end location
+ */
+#define SWITCH_X_END                        319
+
+/*
+ * Switch area Y start location
+ */
+#define SWITCH_Y_START                      0
+
+/*
+ * Switch area Y 1/3 location
+ */
+#define SWITCH_Y_ONE_THIRD                  80
+
+/*
+ * Switch area Y half location
+ */
+#define SWITCH_Y_HALF                       120
+
+/*
+ * Switch area Y 2/3 location
+ */
+#define SWITCH_Y_TWO_THIRD                  160
+
+/*
+ * Switch area Y end location
+ */
+#define SWITCH_Y_END                        239
+
+/*
+ * Switch font_size
+ */
+#define SWITCH_FONT_SIZE                    32
+
+/*
+ * Macro for query redis and log info
+ */
+#define EXEC_REDIS_CMD(reply, goto_label, cmd, ...)		LOG_DEBUG(cmd, ##__VA_ARGS__);\
+                                                        reply = redisCommand(gs_sync_context, cmd, ##__VA_ARGS__);\
+                                                        if(NULL == reply) {\
+                                                            LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);\
+                                                            LOG_ERROR(cmd, ##__VA_ARGS__);\
+                                                            goto goto_label;\
+                                                        }
+
+/*
+ * Macro for subscribe redis and log info
+ */
+#define ASYNC_REDIS_CMD(callback, parameter, cmd, ...)  LOG_DEBUG(cmd, ##__VA_ARGS__);\
+                                                        redisAsyncCommand(gs_async_context, callback, parameter, cmd, ##__VA_ARGS__);
 
 /*
  * Store last update time information
@@ -81,11 +444,23 @@
 static struct timeval gs_sensor[4];
 
 /*
+ * Char format switch index used to pass 
+ * parameters to call back function
+ */
+static char sw_idx[6] = {'0', '1', '2', '3', '4', '5'};
+
+/*
  * Context for redis connection and controller
  * network connection
  */
 static to_socket_ctx gs_socket = -1;
 static redisAsyncContext *gs_async_context = NULL;
+static redisContext *gs_sync_context = NULL;
+
+/*
+ * Stores config for switch items
+ */
+redisReply *gs_sw_config = NULL;
 
 /*
  * Buffer use to convert and send strings
@@ -98,11 +473,6 @@ static char output_buffer[1024];
  * from utf-8 to gb2312
  */
 static iconv_t conv = NULL;
-
-/*
- * Used to pass parameters to subscribeCallback
- */
-static char gs_idx_name[6] = {'0', '1', '2', '3', '4', '5'};
 
 /*
  * Flag for micro srevice exit event, when set 
@@ -200,12 +570,35 @@ int draw_string(unsigned int x_start, unsigned int y_start, unsigned int x_end, 
     int converted_cnt = 0;
     va_list ap;
     va_start(ap, fmt);
-    LOG_DETAILS("draw_string");
+    LOG_DETAILS("draw_string %d %d %d %d", x_start, y_start, x_end, y_end);
     ret = vsprintf(input_buffer, fmt, ap);
     va_end(ap);
     
     LOG_DETAILS("Convert %s", input_buffer);
     converted_cnt = convert_encoding();
+
+    y_start += (y_end - y_start - font_size)/2;
+    y_end = y_start + font_size;
+
+    int cur_idx = 0;
+    unsigned int used_len = 0;
+    while(cur_idx < converted_cnt - 1) {
+        if(0x20 <= output_buffer[cur_idx] && output_buffer[cur_idx] <= 0x7E) {
+            used_len += 8;
+            cur_idx += 1;
+        } else if(0xAA == output_buffer[cur_idx] || 0xAB == output_buffer[cur_idx]) {
+            used_len += 8;
+            cur_idx += 2;
+        } else {
+            used_len += 16;
+            cur_idx += 2;
+        }
+    }
+    
+    LOG_DETAILS("used_len: %d font size: %d x_start: %d x_end: %d", used_len, font_size, x_start, x_end);
+    if(used_len * font_size / 16 < x_end - x_start + 1) {
+        x_start += (x_end - x_start + 1 - used_len * font_size / 16)/2;
+    }
     
     input_buffer[0] = 0x63; //cmd
     input_buffer[1] = ((x_start >> 8) & 0xFF);
@@ -226,18 +619,10 @@ int draw_string(unsigned int x_start, unsigned int y_start, unsigned int x_end, 
     LOG_DETAILS("send %d bytes: %s", converted_cnt, input_buffer+12);
     
     ret = to_send(gs_socket, input_buffer, converted_cnt + 12, 0);
-    if(0 > ret) {
-        LOG_ERROR("Drawstring send error: %s", strerror(errno));
-        return ret;
-    }
-    
     LOG_DETAILS("Send result: %d", ret);
 
-    ret = to_recv(gs_socket, input_buffer, 1, 0);
-    LOG_DETAILS("Received: %d 0x%x", ret, input_buffer[0]);
-    
     if(0 > ret) {
-        LOG_ERROR("Drawstring receive error: %s", strerror(errno));
+        LOG_ERROR("Drawstring send error: %s", strerror(errno));
     }
     
     return ret;
@@ -268,7 +653,6 @@ int draw_string(unsigned int x_start, unsigned int y_start, unsigned int x_end, 
  */
  int draw_rectangle(unsigned int x_start, unsigned int y_start, unsigned int x_end, unsigned int y_end, unsigned int color) {
     int ret;
-    unsigned char retry = 0;
     unsigned char bytes[11];
     
     bytes[0] = 0x62; //cmd
@@ -285,21 +669,9 @@ int draw_string(unsigned int x_start, unsigned int y_start, unsigned int x_end, 
     
     LOG_DEBUG("Draw rectangle send!");
     ret = to_send(gs_socket, bytes, 11, 0);
+    LOG_DETAILS("Send result: %d", ret);
     if(0 > ret) {
         LOG_ERROR("Draw rectangle failed send!");
-        return ret;
-    }
-    
-    do
-    {
-        retry++;
-        ret = to_recv(gs_socket, bytes, 1, 0);
-    }
-    while(0 > ret && (EAGAIN == errno || EWOULDBLOCK == errno) && retry < 5);
-    LOG_DETAILS("Draw rectangle received %d 0x%x!", ret, bytes[0]);
-    
-    if(0 > ret) {
-        LOG_ERROR("Draw rectangle failed receive! %s", strerror(errno));
     }
     
     return ret;
@@ -345,354 +717,37 @@ int draw_line(unsigned int x_start, unsigned int y_start, unsigned int x_end, un
     
     LOG_DEBUG("Draw line send!");
     ret = to_send(gs_socket, bytes, 11, 0);
+    LOG_DETAILS("Send result: %d", ret);
     if(0 > ret) {
         LOG_ERROR("Draw line failed send! %s", strerror(errno));
-        return ret;
-    }
-    
-    ret = to_recv(gs_socket, bytes, 1, 0);
-    
-    if(0 > ret) {
-        LOG_ERROR("Draw line failed receive! %s", strerror(errno));
     }
 
     return ret;
 }
 
 /*
- * draw_sensor_name is used to draw the name of
- * sensor index in corresponding area. It is 
- * called internally from drawSensorNameCallback
- * and main function.
+ * draw_time is used to draw time area
+ * of LCD display. This is called from 
+ * drawTimeCallback.
  * 
  * Parameters:
- * unsigned char index      index of the sensor
- * char* value              sensor name string
+ * char* time   The time string
  * 
  * Return value:
  * Equal or greater than 0 means successful
  * Less than 0 means failed
  */
-int draw_sensor_name(unsigned char index, char* value) {
-    int ret;
-    unsigned int x_start, y_start, x_end, y_end;
-    unsigned char font_size = 24;
-
-    x_start = 2;
-    x_end = 82;
-    y_start = index * 60 + 6;
-    y_end = index * 60 + 31;
-
-    LOG_DETAILS("Sensor name location: %d %d %d %d", x_start, y_start, x_end, y_end);
-
-    // erase target area
-    ret = draw_rectangle(x_start, y_start, x_end, y_end, BACKGROUND_COLOR);
-    if(0 > ret) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
+ int draw_time(const char* time) {
+    int ret = draw_rectangle(TIME_X_START, TIME_Y_START, TIME_X_END, TIME_Y_END, BG_COLOR);
+    if(0 > ret)
         return ret;
-    }
-    
-    ret = draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, value);
-    if(0 > ret) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-    }
-    
-    return ret;
-}
-
-/*
- * drawSensor1NameCallback is used to draw the name of
- * sensor 1 in corresponding area. The design here is 
- * to put the name string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           Not used
- * 
- * Return value:
- * There is no return value
- */
-void drawSensorNameCallback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-    
-    LOG_DETAILS("Enter drawSensorNameCallback");
-    
-    char* priv_ch = (char*)privdata;
-    if(*priv_ch < '0' || *priv_ch > '3') {
-        LOG_WARNING("Warning: invalid priv data %c!", priv_ch);
-        return;
-    }
-
-    if (NULL == reply) {
-        if (c->errstr) {
-            LOG_ERROR("errstr: %s", c->errstr);
-        }
-        return;
-    }
-    
-    LOG_DETAILS("Priv data: %c", *priv_ch);
-    
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        if(0 > draw_sensor_name(*priv_ch - '0', reply->element[2]->str)) {
-            LOG_ERROR("Error drawSensorNameCallback!");
-            redisAsyncDisconnect(c);
-        }
-    } else {
-        LOG_WARNING("Invalid drawSensorNameCallback input format!");
-    }
-    
-    LOG_DETAILS("drawSensorNameCallback finished!");
-}
-
-/*
- * draw_sensor is used to draw the value of
- * sensor index in corresponding area. It is 
- * called internally from drawSensorCallback
- * and main function.
- * 
- * Parameters:
- * unsigned char index      index of the sensor
- * char* value              sensor name string
- * 
- * Return value:
- * Equal or greater than 0 means successful
- * Less than 0 means failed
- */
-int draw_sensor(unsigned char index, char* value) {
-    int ret;
-    unsigned int x_start, y_start, x_end, y_end;
-    unsigned char font_size = 24;
-
-    x_start = 2;
-    x_end = 82;
-    y_start = 60 * index + 34;
-    y_end = 60 * index + 59;
-    
-    LOG_DETAILS("Sensor location: %d %d %d %d", x_start, y_start, x_end, y_end);
-
-    // erase target area
-    ret = draw_rectangle(x_start, y_start, x_end, y_end, BACKGROUND_COLOR);
-    if(0 > ret) {
-        LOG_ERROR("Error draw_sensor drawing rectangle!");
-        return ret;
-    }
-    
-    ret = draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, value);
-    if(0 > ret) {
-        LOG_ERROR("Error draw_sensor drawing string!");
-    }
-    
-    return ret;
-}
-
-/*
- * drawSensor1Callback is used to draw the value of
- * sensor 1 in corresponding area. The design here is 
- * to put the value string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           Not used
- * 
- * Return value:
- * There is no return value
- */
-void drawSensorCallback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-
-    char* priv_ch = (char*)privdata;
-    if(*priv_ch < '0' || *priv_ch > '3') {
-        LOG_WARNING("Warning: invalid priv data %c!", priv_ch);
-        return;
-    }
-
-    if (NULL == reply) {
-        if (c->errstr) {
-            LOG_ERROR("errstr: %s", c->errstr);
-        }
-        return;
-    }
-    
-    struct timeval newTime;
-    gettimeofday(&newTime, NULL);
-    if(((newTime.tv_sec - gs_sensor[*priv_ch - '0'].tv_sec) * 1000 + 
-        (newTime.tv_usec - gs_sensor[*priv_ch - '0'].tv_usec) / 1000) < SENSOR_VALUE_INTERVAL_MS) {
-        LOG_DETAILS("Refresh frequency of channel %c is too high, skip", *priv_ch);
-        return;
-    }
-
-    gettimeofday(&gs_sensor[*priv_ch - '0'], NULL);
-
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        if(0 > draw_sensor(*priv_ch - '0', reply->element[2]->str)) {
-            LOG_ERROR("Error drawSensorCallback!");
-            redisAsyncDisconnect(c);
-        }
-    } else {
-        LOG_WARNING("Invalid drawSensorCallback input format!");
-    }
-    
-    LOG_DETAILS("drawSensorCallback finished!");
-}
-
-/*
- * draw_sw_name is used to draw the name of
- * switch index in corresponding area. It is 
- * called internally from drawSWNameCallback
- * and main function.
- * 
- * Parameters:
- * unsigned char index      index of the sensor
- * char* value              sensor name string
- * 
- * Return value:
- * Equal or greater than 0 means successful
- * Less than 0 means failed
- */
-int draw_sw_name(unsigned char index, char* value) {
-    int ret = SND_RCV_OK;
-    unsigned int x_start, y_start, x_end, y_end;
-    unsigned char font_size = 32;
-
-    x_start = 79 * (index % 3) + 91;
-    x_end = 79 * (index % 3) + 162;
-
-    if(index >= 3) {
-        y_start = 152;
-        y_end = 185;
-    } else {
-        y_start = 31;
-        y_end = 64;
-    }
-
-    // erase target area
-    ret = draw_rectangle(x_start, y_start, x_end, y_end, BACKGROUND_COLOR);
-    if(0 > ret) {
-        LOG_ERROR("Error drawSensor1Callback drawing rectangle!");
-        return ret;
-    }
-    
-    ret = draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, value);
-    if(0 > ret) {
-        LOG_ERROR("Error drawSensor1Callback drawing string!");
-    }
-    
-    return ret;
-}
-
-/*
- * drawSensor1NameCallback is used to draw the name of
- * switch 1 in corresponding area. The design here is 
- * to put the name string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
- * 
- * Parameters:
- * redisAsyncContext *c     Connection context to redis
- * void *r                  Response struct for redis returned values
- * void *privdata           Not used
- * 
- * Return value:
- * There is no return value
- */
-void drawSWNameCallback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = r;
-
-    char* priv_ch = (char*)privdata;
-    if(*priv_ch < '0' || *priv_ch > '5') {
-        LOG_WARNING("Warning: invalid priv data %c!", priv_ch);
-        return;
-    }
-
-    if (NULL == reply) {
-        if (c->errstr) {
-            LOG_ERROR("errstr: %s", c->errstr);
-        }
-        return;
-    }
-
-    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        if(0 > draw_sw_name(*priv_ch - '0', reply->element[2]->str)) {
-            LOG_ERROR("Error drawSWNameCallback!");
-            redisAsyncDisconnect(c);
-        }
-    } else {
-        LOG_WARNING("Invalid drawSensorCallback input format!");
-    }
-    
-    LOG_DETAILS("drawSWNameCallback finished!");
-}
-
-/*
- * draw_sw_status is used to draw the status of
- * switch index in corresponding area. It is 
- * called internally from drawSWStatusCallback
- * and main function.
- * 
- * Parameters:
- * unsigned char index      index of the sensor
- * char* value              sensor name string
- * 
- * Return value:
- * Equal or greater than 0 means successful
- * Less than 0 means failed
- */
-int draw_sw_status(unsigned char index, unsigned char status) {
-    int ret;
-    unsigned int x_start, y_start, x_end, y_end, x_min, x_max;
-    unsigned char font_size = 16;
-    const char* ch = NULL;
-
-    if(index >= 3) {
-        y_start = 190;
-        y_end = 207;
-    } else {
-        y_start = 69;
-        y_end = 86;
-    }
-
-    x_min = (index % 3) * 79 + 107;
-    x_max = (index % 3) * 79 + 140;
-    if(0 == status) {
-        x_start = (index % 3) * 79 + 107;
-        x_end = (index % 3) * 79 + 124;
-        ch = "关";
-    } else {
-        x_start = (index % 3) * 79 + 123;
-        x_end = (index % 3) * 79 + 140;
-        ch = "开";
-    }
-
-    ret = draw_rectangle(x_min, y_start, x_max, y_end, BACKGROUND_COLOR);
-    if(0 > ret) {
-        LOG_ERROR("Error draw_sw_status drawing rectangle!");
-        return ret;
-    }
-   
-    ret = draw_string(x_start, y_start, x_end, y_end, COLOR_WHITE, font_size, ch);
-    if(0 > ret) {
-        LOG_ERROR("Error draw_sw_status drawing string!");
-    }
         
-    return ret;
+    return draw_string(TIME_X_START, TIME_Y_START, TIME_X_END, TIME_Y_END, FG_COLOR, TIME_FONT_SIZE, time);
 }
 
 /*
- * drawSW1StatusCallback is used to draw the value of
- * switch 1 in corresponding area. The design here is 
- * to put the value string in redis, and hard code the
- * location of each item in program. So user can change
- * the text at any time, but the overall layout will
- * keep the same.
+ * drawTimeCallback is used to draw time area
+ * of LCD display. 
  * 
  * Parameters:
  * redisAsyncContext *c     Connection context to redis
@@ -702,32 +757,673 @@ int draw_sw_status(unsigned char index, unsigned char status) {
  * Return value:
  * There is no return value
  */
-void drawSWStatusCallback(redisAsyncContext *c, void *r, void *privdata) {
+void drawTimeCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
-
-    char* priv_ch = (char*)privdata;
-    if(*priv_ch < '0' || *priv_ch > '5') {
-        LOG_WARNING("Warning: invalid priv data %c!", priv_ch);
-        return;
-    }
-
+    
+    UNUSED(privdata);
+    
     if (NULL == reply) {
         if (c->errstr) {
             LOG_ERROR("errstr: %s", c->errstr);
         }
         return;
     }
-
+    
     if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        if(0 > draw_sw_status(*priv_ch - '0', 0 != strcmp("0", reply->element[2]->str))) {
-            LOG_ERROR("Error drawSWStatusCallback!");
+        if(0 > draw_time(reply->element[2]->str)) {
+            LOG_ERROR("Draw time failed!");
             redisAsyncDisconnect(c);
         }
-    } else {
-        LOG_WARNING("Invalid drawSWStatusCallback input format!");
     }
     
-    LOG_DETAILS("drawSWStatusCallback finished!");
+    LOG_DETAILS("drawTimeCallback finished!");
+}
+
+/*
+ * draw_weather is used to draw weather area
+ * of LCD display. This is called from 
+ * drawWeatherCallback and main function
+ * 
+ * Parameters:
+ * char* weather   The weather string
+ * 
+ * Return value:
+ * Equal or greater than 0 means successful
+ * Less than 0 means failed
+ */
+int draw_weather(const char* weather) {
+    int ret = draw_rectangle(FORCAST_X_START, FORCAST_Y_START, FORCAST_X_END, FORCAST_Y_END, BG_COLOR);
+    if(0 > ret)
+        return ret;
+        
+    return draw_string(FORCAST_X_START, FORCAST_Y_START, FORCAST_X_END, FORCAST_Y_END, FG_COLOR, FORCAST_FONT_SIZE, weather);
+}
+
+/*
+ * drawWeatherCallback is used to draw weather area
+ * of LCD display. 
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           Not used
+ * 
+ * Return value:
+ * There is no return value
+ */
+void drawWeatherCallback(redisAsyncContext *c, void *r, void *privdata) {
+    redisReply *reply = r;
+    
+    UNUSED(privdata);
+    
+    if (NULL == reply) {
+        if (c->errstr) {
+            LOG_ERROR("errstr: %s", c->errstr);
+        }
+        return;
+    }
+    
+    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
+        if(0 > draw_weather(reply->element[2]->str)) {
+            LOG_ERROR("Draw weather failed!");
+            redisAsyncDisconnect(c);
+        }
+    }
+    
+    LOG_DETAILS("drawWeatherCallback finished!");
+}
+
+/*
+ * draw_temp is used to draw temperature area
+ * of LCD display. This is called from 
+ * drawTempCallback and main function
+ * 
+ * Parameters:
+ * char* temperature   The temperature string
+ * 
+ * Return value:
+ * Equal or greater than 0 means successful
+ * Less than 0 means failed
+ */
+int draw_temp(const char* temperature) {
+    int ret = draw_rectangle(FORCAST_TEMP_X_START, FORCAST_TEMP_Y_START, FORCAST_TEMP_X_END, FORCAST_TEMP_Y_END, BG_COLOR);
+    if(0 > ret)
+        return ret;
+        
+    return draw_string(FORCAST_TEMP_X_START, FORCAST_TEMP_Y_START, FORCAST_TEMP_X_END, FORCAST_TEMP_Y_END, FG_COLOR, FORCAST_TEMP_FONT_SIZE, temperature);;
+}
+
+/*
+ * drawTempCallback is used to draw temperature area
+ * of LCD display. 
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           Not used
+ * 
+ * Return value:
+ * There is no return value
+ */
+void drawTempCallback(redisAsyncContext *c, void *r, void *privdata) {
+    redisReply *reply = r;
+    
+    UNUSED(privdata);
+    
+    if (NULL == reply) {
+        if (c->errstr) {
+            LOG_ERROR("errstr: %s", c->errstr);
+        }
+        return;
+    }
+    
+    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
+        if(0 > draw_temp(reply->element[2]->str)) {
+            LOG_ERROR("Draw forcast temperature failed!");
+            redisAsyncDisconnect(c);
+        }
+    }
+    
+    LOG_DETAILS("drawTempCallback finished!");
+}
+
+/*
+ * draw_humidity is used to draw humidity area
+ * of LCD display. This is called from 
+ * drawHumidityCallback and main function
+ * 
+ * Parameters:
+ * char* humidity   The humidity string
+ * 
+ * Return value:
+ * Equal or greater than 0 means successful
+ * Less than 0 means failed
+ */
+int draw_humidity(const char* humidity) {
+    int ret = draw_rectangle(FORCAST_HUMIDITY_X_START, FORCAST_HUMIDITY_Y_START, FORCAST_HUMIDITY_X_END, FORCAST_HUMIDITY_Y_END, BG_COLOR);
+    if(0 > ret)
+        return ret;
+        
+    return draw_string(FORCAST_HUMIDITY_X_START, FORCAST_HUMIDITY_Y_START, FORCAST_HUMIDITY_X_END, FORCAST_HUMIDITY_Y_END, FG_COLOR, FORCAST_HUMIDITY_FONT_SIZE, humidity);;
+}
+
+/*
+ * drawHumidityCallback is used to draw humidity area
+ * of LCD display. 
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           Not used
+ * 
+ * Return value:
+ * There is no return value
+ */
+void drawHumidityCallback(redisAsyncContext *c, void *r, void *privdata) {
+    redisReply *reply = r;
+    
+    UNUSED(privdata);
+    
+    if (NULL == reply) {
+        if (c->errstr) {
+            LOG_ERROR("errstr: %s", c->errstr);
+        }
+        return;
+    }
+    
+    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
+        if(0 > draw_humidity(reply->element[2]->str)) {
+            LOG_ERROR("Draw forcast humidity failed!");
+            redisAsyncDisconnect(c);
+        }
+    }
+    
+    LOG_DETAILS("drawHumidityCallback finished!");
+}
+
+/*
+ * draw_wind is used to draw wind area
+ * of LCD display. This is called from 
+ * drawWindCallback and main function
+ * 
+ * Parameters:
+ * char* wind   The wind string
+ * 
+ * Return value:
+ * Equal or greater than 0 means successful
+ * Less than 0 means failed
+ */
+int draw_wind(const char* wind) {
+    int ret = draw_rectangle(FORCAST_WIND_X_START, FORCAST_WIND_Y_START, FORCAST_WIND_X_END, FORCAST_WIND_Y_END, BG_COLOR);
+    if(0 > ret)
+        return ret;
+        
+    return draw_string(FORCAST_WIND_X_START, FORCAST_WIND_Y_START, FORCAST_WIND_X_END, FORCAST_WIND_Y_END, FG_COLOR, FORCAST_WIND_FONT_SIZE, wind);;
+}
+
+/*
+ * drawWindCallback is used to draw wind area
+ * of LCD display. 
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           Not used
+ * 
+ * Return value:
+ * There is no return value
+ */
+void drawWindCallback(redisAsyncContext *c, void *r, void *privdata) {
+    redisReply *reply = r;
+    
+    UNUSED(privdata);
+    
+    if (NULL == reply) {
+        if (c->errstr) {
+            LOG_ERROR("errstr: %s", c->errstr);
+        }
+        return;
+    }
+    
+    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
+        if(0 > draw_wind(reply->element[2]->str)) {
+            LOG_ERROR("Draw forcast wind failed!");
+            redisAsyncDisconnect(c);
+        }
+    }
+    
+    LOG_DETAILS("drawWindCallback finished!");
+}
+
+/*
+ * draw_aqi is used to draw aqi area
+ * of LCD display. This is called from 
+ * drawAqiCallback and main function
+ * 
+ * Parameters:
+ * char* aqi   The aqi string
+ * 
+ * Return value:
+ * Equal or greater than 0 means successful
+ * Less than 0 means failed
+ */
+int draw_aqi(const char* aqi) {
+    int ret = draw_rectangle(FORCAST_AQI_X_START, FORCAST_AQI_Y_START, FORCAST_AQI_X_END, FORCAST_AQI_Y_END, BG_COLOR);
+    if(0 > ret)
+        return ret;
+        
+    return draw_string(FORCAST_AQI_X_START, FORCAST_AQI_Y_START, FORCAST_AQI_X_END, FORCAST_AQI_Y_END, FG_COLOR, FORCAST_AQI_FONT_SIZE, aqi);;
+}
+
+/*
+ * drawAqiCallback is used to draw aqi area
+ * of LCD display. 
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           Not used
+ * 
+ * Return value:
+ * There is no return value
+ */
+void drawAqiCallback(redisAsyncContext *c, void *r, void *privdata) {
+    redisReply *reply = r;
+    
+    UNUSED(privdata);
+    
+    if (NULL == reply) {
+        if (c->errstr) {
+            LOG_ERROR("errstr: %s", c->errstr);
+        }
+        return;
+    }
+    
+    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
+        if(0 > draw_aqi(reply->element[2]->str)) {
+            LOG_ERROR("Draw forcast aqi failed!");
+            redisAsyncDisconnect(c);
+        }
+    }
+    
+    LOG_DETAILS("drawAqiCallback finished!");
+}
+
+/*
+ * draw_area1_name is used to draw area1 name
+ * of LCD display. This is called from 
+ * drawArea1NameCallback and main function
+ * 
+ * Parameters:
+ * char* name   The name string
+ * 
+ * Return value:
+ * Equal or greater than 0 means successful
+ * Less than 0 means failed
+ */
+int draw_area1_name(const char* name) {
+    int ret = draw_rectangle(AREA1_NAME_X_START, AREA1_NAME_Y_START, AREA1_NAME_X_END, AREA1_NAME_Y_END, BG_COLOR);
+    if(0 > ret)
+        return ret;
+        
+    return draw_string(AREA1_NAME_X_START, AREA1_NAME_Y_START, AREA1_NAME_X_END, AREA1_NAME_Y_END, FG_COLOR, AREA1_NAME_FONT_SIZE, name);;
+}
+
+/*
+ * drawAqiCallback is used to draw area 1 name area
+ * of LCD display. 
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           Not used
+ * 
+ * Return value:
+ * There is no return value
+ */
+void drawArea1NameCallback(redisAsyncContext *c, void *r, void *privdata) {
+    redisReply *reply = r;
+    
+    UNUSED(privdata);
+    
+    if (NULL == reply) {
+        if (c->errstr) {
+            LOG_ERROR("errstr: %s", c->errstr);
+        }
+        return;
+    }
+    
+    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
+        if(0 > draw_area1_name(reply->element[2]->str)) {
+            LOG_ERROR("Draw area 1 name failed!");
+            redisAsyncDisconnect(c);
+        }
+    }
+    
+    LOG_DETAILS("drawArea1NameCallback finished!");
+}
+
+/*
+ * draw_area1_temp is used to draw area1 temperature
+ * of LCD display. This is called from 
+ * drawArea1TempCallback and main function
+ * 
+ * Parameters:
+ * char* temp   The temperature string
+ * 
+ * Return value:
+ * Equal or greater than 0 means successful
+ * Less than 0 means failed
+ */
+int draw_area1_temp(const char* temp) {
+    int ret = draw_rectangle(AREA1_TEMP_X_START, AREA1_TEMP_Y_START, AREA1_TEMP_X_END, AREA1_TEMP_Y_END, BG_COLOR);
+    if(0 > ret)
+        return ret;
+        
+    return draw_string(AREA1_TEMP_X_START, AREA1_TEMP_Y_START, AREA1_TEMP_X_END, AREA1_TEMP_Y_END, FG_COLOR, AREA1_TEMP_FONT_SIZE, temp);;
+}
+
+/*
+ * drawArea1TempCallback is used to draw area 1 temperature area
+ * of LCD display. 
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           Not used
+ * 
+ * Return value:
+ * There is no return value
+ */
+void drawArea1TempCallback(redisAsyncContext *c, void *r, void *privdata) {
+    redisReply *reply = r;
+    
+    UNUSED(privdata);
+    
+    if (NULL == reply) {
+        if (c->errstr) {
+            LOG_ERROR("errstr: %s", c->errstr);
+        }
+        return;
+    }
+    
+    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
+        if(0 > draw_area1_temp(reply->element[2]->str)) {
+            LOG_ERROR("Draw area 1 temperature failed!");
+            redisAsyncDisconnect(c);
+        }
+    }
+    
+    LOG_DETAILS("drawArea1TempCallback finished!");
+}
+
+/*
+ * draw_area1_brightness is used to draw area1 brightness
+ * of LCD display. This is called from 
+ * drawArea1BrightnessCallback and main function
+ * 
+ * Parameters:
+ * char* brightness   The brightness string
+ * 
+ * Return value:
+ * Equal or greater than 0 means successful
+ * Less than 0 means failed
+ */
+int draw_area1_brightness(const char* brightness) {
+    int ret = draw_rectangle(AREA1_BRIGHTNESS_X_START, AREA1_BRIGHTNESS_Y_START, AREA1_BRIGHTNESS_X_END, AREA1_BRIGHTNESS_Y_END, BG_COLOR);
+    if(0 > ret)
+        return ret;
+        
+    return draw_string(AREA1_BRIGHTNESS_X_START, AREA1_BRIGHTNESS_Y_START, AREA1_BRIGHTNESS_X_END, AREA1_BRIGHTNESS_Y_END, FG_COLOR, AREA1_BRIGHTNESS_FONT_SIZE, brightness);
+}
+
+/*
+ * drawArea1BrightnessCallback is used to draw area 1 temperature area
+ * of LCD display. 
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           Not used
+ * 
+ * Return value:
+ * There is no return value
+ */
+void drawArea1BrightnessCallback(redisAsyncContext *c, void *r, void *privdata) {
+    redisReply *reply = r;
+    
+    UNUSED(privdata);
+    
+    if (NULL == reply) {
+        if (c->errstr) {
+            LOG_ERROR("errstr: %s", c->errstr);
+        }
+        return;
+    }
+    
+    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
+        if(0 > draw_area1_brightness(reply->element[2]->str)) {
+            LOG_ERROR("Draw area 1 brightness failed!");
+            redisAsyncDisconnect(c);
+        }
+    }
+    
+    LOG_DETAILS("drawArea1BrightnessCallback finished!");
+}
+
+/*
+ * draw_area2_name is used to draw area2 name
+ * of LCD display. This is called from 
+ * drawArea2NameCallback and main function
+ * 
+ * Parameters:
+ * char* name   The name string
+ * 
+ * Return value:
+ * Equal or greater than 0 means successful
+ * Less than 0 means failed
+ */
+int draw_area2_name(const char* name) {
+    int ret = draw_rectangle(AREA2_NAME_X_START, AREA2_NAME_Y_START, AREA2_NAME_X_END, AREA2_NAME_Y_END, BG_COLOR);
+    if(0 > ret)
+        return ret;
+        
+    return draw_string(AREA2_NAME_X_START, AREA2_NAME_Y_START, AREA2_NAME_X_END, AREA2_NAME_Y_END, FG_COLOR, AREA2_NAME_FONT_SIZE, name);;
+}
+
+/*
+ * drawAqiCallback is used to draw area 2 name area
+ * of LCD display. 
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           Not used
+ * 
+ * Return value:
+ * There is no return value
+ */
+void drawArea2NameCallback(redisAsyncContext *c, void *r, void *privdata) {
+    redisReply *reply = r;
+    
+    UNUSED(privdata);
+    
+    if (NULL == reply) {
+        if (c->errstr) {
+            LOG_ERROR("errstr: %s", c->errstr);
+        }
+        return;
+    }
+    
+    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
+        if(0 > draw_area2_name(reply->element[2]->str)) {
+            LOG_ERROR("Draw area2 name failed!");
+            redisAsyncDisconnect(c);
+        }
+    }
+    
+    LOG_DETAILS("drawArea2NameCallback finished!");
+}
+
+/*
+ * draw_area2_temp is used to draw area1 temperature
+ * of LCD display. This is called from 
+ * drawArea1TempCallback and main function
+ * 
+ * Parameters:
+ * char* temp   The temperature string
+ * 
+ * Return value:
+ * Equal or greater than 0 means successful
+ * Less than 0 means failed
+ */
+int draw_area2_temp(const char* temp) {
+    int ret = draw_rectangle(AREA2_TEMP_X_START, AREA2_TEMP_Y_START, AREA2_TEMP_X_END, AREA2_TEMP_Y_END, BG_COLOR);
+    if(0 > ret)
+        return ret;
+        
+    return draw_string(AREA2_TEMP_X_START, AREA2_TEMP_Y_START, AREA2_TEMP_X_END, AREA2_TEMP_Y_END, FG_COLOR, AREA2_TEMP_FONT_SIZE, temp);
+}
+
+/*
+ * drawArea2TempCallback is used to draw area 2 temperature area
+ * of LCD display. 
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           Not used
+ * 
+ * Return value:
+ * There is no return value
+ */
+void drawArea2TempCallback(redisAsyncContext *c, void *r, void *privdata) {
+    redisReply *reply = r;
+    
+    UNUSED(privdata);
+    
+    if (NULL == reply) {
+        if (c->errstr) {
+            LOG_ERROR("errstr: %s", c->errstr);
+        }
+        return;
+    }
+    
+    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
+        if(0 > draw_area2_temp(reply->element[2]->str)) {
+            LOG_ERROR("Draw area 2 temperature failed!");
+            redisAsyncDisconnect(c);
+        }
+    }
+    
+    LOG_DETAILS("drawArea2TempCallback finished!");
+}
+
+/*
+ * draw_area2_brightness is used to draw area1 brightness
+ * of LCD display. This is called from 
+ * drawArea2BrightnessCallback and main function
+ * 
+ * Parameters:
+ * char* brightness   The temperature string
+ * 
+ * Return value:
+ * Equal or greater than 0 means successful
+ * Less than 0 means failed
+ */
+int draw_area2_brightness(const char* brightness) {
+    int ret = draw_rectangle(AREA2_BRIGHTNESS_X_START, AREA2_BRIGHTNESS_Y_START, AREA2_BRIGHTNESS_X_END, AREA2_BRIGHTNESS_Y_END, BG_COLOR);
+    if(0 > ret)
+        return ret;
+        
+    return draw_string(AREA2_BRIGHTNESS_X_START, AREA2_BRIGHTNESS_Y_START, AREA2_BRIGHTNESS_X_END, AREA2_BRIGHTNESS_Y_END, FG_COLOR, AREA2_BRIGHTNESS_FONT_SIZE, brightness);
+}
+
+/*
+ * drawArea2BrightnessCallback is used to draw area 2 brightness area
+ * of LCD display. 
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           Not used
+ * 
+ * Return value:
+ * There is no return value
+ */
+void drawArea2BrightnessCallback(redisAsyncContext *c, void *r, void *privdata) {
+    redisReply *reply = r;
+    
+    UNUSED(privdata);
+    
+    if (NULL == reply) {
+        if (c->errstr) {
+            LOG_ERROR("errstr: %s", c->errstr);
+        }
+        return;
+    }
+    
+    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
+        if(0 > draw_area2_brightness(reply->element[2]->str)) {
+            LOG_ERROR("Draw area 2 brightness failed!");
+            redisAsyncDisconnect(c);
+        }
+    }
+    
+    LOG_DETAILS("drawArea2BrightnessCallback finished!");
+}
+
+/*
+ * draw_target_temp is used to draw target temperature
+ * of LCD display. This is called from 
+ * drawArea2BrightnessCallback and main function
+ * 
+ * Parameters:
+ * char* temp   The temperature string
+ * 
+ * Return value:
+ * Equal or greater than 0 means successful
+ * Less than 0 means failed
+ */
+int draw_target_temp(const char* temp) {
+    int ret = draw_rectangle(TARGET_TEMP_X_START, TARGET_TEMP_Y_START, TARGET_TEMP_X_END, TARGET_TEMP_Y_END, BG_COLOR);
+    if(0 > ret)
+        return ret;
+    return draw_string(TARGET_TEMP_X_START, TARGET_TEMP_Y_START, TARGET_TEMP_X_END, TARGET_TEMP_Y_END, FG_COLOR, TARGET_TEMP_FONT_SIZE, temp);
+}
+
+/*
+ * drawTargetTempCallback is used to draw target temperature area
+ * of LCD display. 
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           Not used
+ * 
+ * Return value:
+ * There is no return value
+ */
+void drawTargetTempCallback(redisAsyncContext *c, void *r, void *privdata) {
+    redisReply *reply = r;
+    
+    UNUSED(privdata);
+    
+    if (NULL == reply) {
+        if (c->errstr) {
+            LOG_ERROR("errstr: %s", c->errstr);
+        }
+        return;
+    }
+    
+    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
+        if(0 > draw_target_temp(reply->element[2]->str)) {
+            LOG_ERROR("Draw target temperature failed!");
+            redisAsyncDisconnect(c);
+        }
+    }
+    
+    LOG_DETAILS("drawTargetTempCallback finished!");
 }
 
 /*
@@ -750,14 +1446,9 @@ int set_brightness(unsigned char brightness) {
     bytes[1] = brightness;
 
     ret = to_send(gs_socket, bytes, 2, 0);
+    LOG_DETAILS("Send result: %d", ret);
     if(0 > ret) {
         LOG_ERROR("Error setBrightnessCallback send failed! %s", strerror(errno));
-        return ret;
-    }
-    
-    ret = to_recv(gs_socket, bytes, 1, 0);
-    if(0 > ret){
-        LOG_ERROR("Error setBrightnessCallback recv failed! %s", strerror(errno));
     }
     
     return ret;
@@ -1000,6 +1691,197 @@ void print_usage(int argc, char **argv) {
 }
 
 /*
+ * Draw lines according to activated switch count each area will be
+ * considered as a switch
+ */
+int draw_sw_lines(void) {
+    int ret = -1;
+    switch(gs_sw_config->elements) {
+        case 1:
+            // only 1 switch do nothing
+            return 0;
+        case 2:
+            // draw line in the middle of area
+            return draw_line(SWITCH_X_START, SWITCH_Y_HALF, SWITCH_X_END, SWITCH_Y_HALF, FG_COLOR);
+        case 3:
+        case 4:
+            ret = draw_line(SWITCH_X_START, SWITCH_Y_HALF, SWITCH_X_END, SWITCH_Y_HALF, FG_COLOR);
+            if(0 > ret)
+                return ret;
+            
+            return draw_line(SWITCH_X_HALF, SWITCH_Y_START, SWITCH_X_HALF, SWITCH_Y_END, FG_COLOR);
+        case 5:
+        case 6:
+            ret = draw_line(SWITCH_X_START, SWITCH_Y_ONE_THIRD, SWITCH_X_END, SWITCH_Y_ONE_THIRD, FG_COLOR);
+            if(0 > ret)
+                return ret;
+            
+            ret = draw_line(SWITCH_X_START, SWITCH_Y_TWO_THIRD, SWITCH_X_END, SWITCH_Y_TWO_THIRD, FG_COLOR);
+            if(0 > ret)
+                return ret;
+                
+            return draw_line(SWITCH_X_HALF, SWITCH_Y_START, SWITCH_X_HALF, SWITCH_Y_END, FG_COLOR);
+    }
+    return ret;
+}
+
+#define DRAW_SW(xstart, ystart, xend, yend)     if(NULL != value && 0 == strcmp("1", value)) {\
+                                                    ret = draw_rectangle(xstart + 1, ystart + 1, xend - 1, yend - 1, FG_COLOR);\
+                                                    if(0 > ret) {\
+                                                        return ret;\
+                                                    }\
+                                                    ret = draw_string(xstart + 1, ystart + 1, xend - 1, yend - 1, BG_COLOR, SWITCH_FONT_SIZE, gs_sw_config->element[idx]->str);\
+                                                } else {\
+                                                    ret = draw_rectangle(xstart + 1, ystart + 1, xend - 1, yend - 1, BG_COLOR);\
+                                                    if(0 > ret) {\
+                                                        return ret;\
+                                                    }\
+                                                    ret = draw_string(xstart + 1, ystart + 1, xend - 1, yend - 1, FG_COLOR, SWITCH_FONT_SIZE, gs_sw_config->element[idx]->str);\
+                                                }
+
+/*
+ * Draw switch name and status
+ */
+int draw_sw(unsigned char idx, char* value) {
+    int ret = -1;
+    switch(gs_sw_config->elements) {
+        case 1:
+            if(0 != idx)
+                return ret;
+                
+            DRAW_SW(SWITCH_X_START, SWITCH_Y_START, SWITCH_X_END, SWITCH_Y_END);
+            return ret;
+        case 2:
+            switch(idx) {
+                case 0:
+                    DRAW_SW(SWITCH_X_START, SWITCH_Y_START, SWITCH_X_END, SWITCH_Y_HALF);
+                    break;
+                case 1:
+                    DRAW_SW(SWITCH_X_START, SWITCH_Y_HALF, SWITCH_X_END, SWITCH_Y_END);
+                    break;
+                default:
+                    break;
+            }
+            return ret;
+        case 3:
+            switch(idx) {
+                case 0:
+                    DRAW_SW(SWITCH_X_START, SWITCH_Y_START, SWITCH_X_HALF, SWITCH_Y_HALF);
+                    break;
+                case 1:
+                    DRAW_SW(SWITCH_X_HALF, SWITCH_Y_START, SWITCH_X_END, SWITCH_Y_HALF);
+                    break;
+                case 2:
+                    DRAW_SW(SWITCH_X_START, SWITCH_Y_HALF, SWITCH_X_HALF, SWITCH_Y_END);
+                    break;
+                default:
+                    break;
+            }
+            return ret;
+        case 4:
+            switch(idx) {
+                case 0:
+                    DRAW_SW(SWITCH_X_START, SWITCH_Y_START, SWITCH_X_HALF, SWITCH_Y_HALF);
+                    break;
+                case 1:
+                    DRAW_SW(SWITCH_X_HALF, SWITCH_Y_START, SWITCH_X_END, SWITCH_Y_HALF);
+                    break;
+                case 2:
+                    DRAW_SW(SWITCH_X_START, SWITCH_Y_HALF, SWITCH_X_HALF, SWITCH_Y_END);
+                    break;
+                case 3:
+                    DRAW_SW(SWITCH_X_HALF, SWITCH_Y_HALF, SWITCH_X_END, SWITCH_Y_END);
+                    break;
+                default:
+                    break;
+            }
+            return ret;
+        case 5:
+            switch(idx) {
+                case 0:
+                    DRAW_SW(SWITCH_X_START, SWITCH_Y_START, SWITCH_X_HALF, SWITCH_Y_ONE_THIRD);
+                    break;
+                case 1:
+                    DRAW_SW(SWITCH_X_HALF, SWITCH_Y_START, SWITCH_X_END, SWITCH_Y_ONE_THIRD);
+                    break;
+                case 2:
+                    DRAW_SW(SWITCH_X_START, SWITCH_Y_ONE_THIRD, SWITCH_X_HALF, SWITCH_Y_TWO_THIRD);
+                    break;
+                case 3:
+                    DRAW_SW(SWITCH_X_HALF, SWITCH_Y_ONE_THIRD, SWITCH_X_END, SWITCH_Y_TWO_THIRD);
+                    break;
+                case 4:
+                    DRAW_SW(SWITCH_X_START, SWITCH_Y_TWO_THIRD, SWITCH_X_HALF, SWITCH_Y_END);
+                    break;
+                default:
+                    break;
+            }
+            return ret;
+        case 6:
+            switch(idx) {
+                case 0:
+                    DRAW_SW(SWITCH_X_START, SWITCH_Y_START, SWITCH_X_HALF, SWITCH_Y_ONE_THIRD);
+                    break;
+                case 1:
+                    DRAW_SW(SWITCH_X_HALF, SWITCH_Y_START, SWITCH_X_END, SWITCH_Y_ONE_THIRD);
+                    break;
+                case 2:
+                    DRAW_SW(SWITCH_X_START, SWITCH_Y_ONE_THIRD, SWITCH_X_HALF, SWITCH_Y_TWO_THIRD);
+                    break;
+                case 3:
+                    DRAW_SW(SWITCH_X_HALF, SWITCH_Y_ONE_THIRD, SWITCH_X_END, SWITCH_Y_TWO_THIRD);
+                    break;
+                case 4:
+                    DRAW_SW(SWITCH_X_START, SWITCH_Y_TWO_THIRD, SWITCH_X_HALF, SWITCH_Y_END);
+                    break;
+                case 5:
+                    DRAW_SW(SWITCH_X_HALF, SWITCH_Y_TWO_THIRD, SWITCH_X_END, SWITCH_Y_END);
+                    break;
+                default:
+                    break;
+            }
+            return ret;
+    }
+    
+    return ret;
+}
+
+
+/*
+ * drawSWCallback is used to draw switch area
+ * of LCD display. 
+ * 
+ * Parameters:
+ * redisAsyncContext *c     Connection context to redis
+ * void *r                  Response struct for redis returned values
+ * void *privdata           char format switch index
+ * 
+ * Return value:
+ * There is no return value
+ */
+void drawSWCallback(redisAsyncContext *c, void *r, void *privdata) {
+    redisReply *reply = r;
+    
+    char* ch = (char*)privdata;
+    
+    if (NULL == reply) {
+        if (c->errstr) {
+            LOG_ERROR("errstr: %s", c->errstr);
+        }
+        return;
+    }
+    
+    if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
+        if(0 > draw_sw(*ch - '0', reply->element[2]->str)) {
+            LOG_ERROR("Draw area 2 brightness failed!");
+            redisAsyncDisconnect(c);
+        }
+    }
+    
+    LOG_DETAILS("drawArea2BrightnessCallback finished!");
+}
+
+/*
  * Main entry of the service. It will first connect
  * to the lcd, and setup send/recv timeout to 
  * ensure the network traffic is not blocking and
@@ -1026,7 +1908,6 @@ void print_usage(int argc, char **argv) {
  */
 int main (int argc, char **argv) {
     
-l_start:
 #ifndef _WIN32
     signal(SIGPIPE, SIG_IGN);
 #endif
@@ -1037,8 +1918,8 @@ l_start:
     const char* redis_ip;
     int serv_port, redis_port;
     
-    redisContext *sync_context = NULL;
-
+    unsigned char temp;
+    
     redis_ip = REDIS_IP;
     redis_port = REDIS_PORT;
     
@@ -1076,67 +1957,60 @@ l_start:
             return -1;
     }
         
+l_start:
+    // Connect to LCD controller
     gs_socket = to_connect(serv_ip, serv_port);
     if(0 > gs_socket) {
         LOG_ERROR("Error creating socket!");
         goto l_socket_cleanup;
     }
     
-/*  
- * Uncomment this part when LCD code upgraded
- */
-/*
+    // Receive initial byte to activate keep alive of remote device
     if(0 > to_recv(gs_socket, &temp, 1, 0)) {
-        LOG_ERROR("Error receiving initial data! %d %s", ret, strerror(errno));
+        LOG_ERROR("Error receiving initial data! %s", strerror(errno));
         goto l_socket_cleanup;
     }
-    LOG_INFO("Connected to controller, remote socket: %d", temp);
-*/    
     
-    sync_context = redisConnectWithTimeout(redis_ip, redis_port, timeout);
-    if(NULL == sync_context) {
+    LOG_INFO("Connected to LCD controller, remote socket: %d", temp);
+    
+    gs_sync_context = redisConnectWithTimeout(redis_ip, redis_port, timeout);
+    if(NULL == gs_sync_context) {
         LOG_ERROR("Connection error: can't allocate redis context");
         goto l_exit;
     }
     
-    if(sync_context->err) {
-        LOG_ERROR("Connection error: %s", sync_context->errstr);
+    if(gs_sync_context->err) {
+        LOG_ERROR("Connection error: %s", gs_sync_context->errstr);
         goto l_free_sync_redis;
     }
-
-    redisReply* reply = redisCommand(sync_context,"PING");
-    if(NULL == reply) {
-        LOG_ERROR("Failed to sync query redis %s", sync_context->errstr);
-        goto l_free_sync_redis;
-    }
+    
+    redisReply* reply  = NULL;
+    redisReply* reply2  = NULL;
+    EXEC_REDIS_CMD(reply, l_free_sync_redis, "PING");
     LOG_DEBUG("PING: %s", reply->str);
     freeReplyObject(reply);
+    reply = NULL;
 
-    LOG_INFO("Connected to redis in sync mode");
+    LOG_INFO("Connected to redis in sync mode!");
     
     // update log level to config in redis
-    LOG_DETAILS("GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
-    reply = redisCommand(sync_context,"GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
-
-    if(NULL == reply) {
-        LOG_ERROR("Failed to sync query redis %s", sync_context->errstr);
-        goto l_free_async_redis;
-    }
-    
+    EXEC_REDIS_CMD(reply, l_free_async_redis, "GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
     if(NULL != reply->str) {
         if(LOG_SET_LEVEL_OK != log_set_level(reply->str)) {
             LOG_WARNING("Failed to set log level %s", reply->str);
         }
     }
-
     freeReplyObject(reply);
+    reply = NULL;
     
+    // Connect to redis in async mode
     redisOptions options = {0};
     REDIS_OPTIONS_SET_TCP(&options, redis_ip, redis_port);
     struct timeval tv = {0};
     tv.tv_sec = 1;
     options.connect_timeout = &tv;
 
+    LOG_INFO("Connected to redis in async mode!");
     gs_async_context = redisAsyncConnectWithOptions(&options);
     if(NULL == gs_async_context) {
         LOG_ERROR("Error cannot allocate gs_async_context!");
@@ -1148,190 +2022,273 @@ l_start:
         goto l_free_async_redis;
     }
 
+    // prepare async calls
     base = event_base_new();
     if(REDIS_OK != redisLibeventAttach(gs_async_context,base)) {
         LOG_ERROR("Error: error redis libevent attach!");
         goto l_free_async_redis;
     }
 
+    LOG_INFO("Set async redis callbacks!");
     redisAsyncSetConnectCallback(gs_async_context,connectCallback);
     redisAsyncSetDisconnectCallback(gs_async_context,disconnectCallback);
     
+    // Subscribe changes for log_level, exit, reset
+    LOG_INFO("Subscribe exit, reset, log_level events!");
+    ASYNC_REDIS_CMD(exitCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, EXIT_FLAG_VALUE);
+    ASYNC_REDIS_CMD(resetCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, RESET_FLAG_VALUE);
+    ASYNC_REDIS_CMD(setLogLevelCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
+    ASYNC_REDIS_CMD(setBrightnessCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC);
+
+    // initialize last update time for sensor values
+    LOG_INFO("Reset sensor data timer!");
     for(int i = 0; i < 4; i++) {
         gettimeofday(&gs_sensor[i], NULL);
     }
 
     // draw grids
-    if(0 > draw_rectangle(0, 0, 319, 239, COLOR_BLUE)) {
+    LOG_INFO("Drawing grids!");
+    if(0 > draw_rectangle(LCD_MIN_X, LCD_MIN_Y, LCD_MAX_X, LCD_MAX_Y, BG_COLOR)) {
         goto l_free_async_redis;
     }
-    if(0 > draw_line(0, 60, 84, 60, COLOR_WHITE)) {
+    if(0 > draw_line(LCD_FUNCTION_SEP_LINE_X_START, LCD_FUNCTION_SEP_LINE_Y_START, LCD_FUNCTION_SEP_LINE_X_END, LCD_FUNCTION_SEP_LINE_Y_END, FG_COLOR)) {
         goto l_free_async_redis;
     }
-    if(0 > draw_line(0, 120, 319, 120, COLOR_WHITE)) {
+    if(0 > draw_line(TIME_WEATHER_SEP_LINE_X_START, TIME_WEATHER_SEP_LINE_Y_START, TIME_WEATHER_SEP_LINE_X_END, TIME_WEATHER_SEP_LINE_Y_END, FG_COLOR)) {
         goto l_free_async_redis;
     }
-    if(0 > draw_line(0, 180, 84, 180, COLOR_WHITE)) {
+    if(0 > draw_line(FORCAST_DATA_SEP_LINE_X_START, FORCAST_DATA_SEP_LINE_Y_START, FORCAST_DATA_SEP_LINE_X_END, FORCAST_DATA_SEP_LINE_Y_END, FG_COLOR)) {
         goto l_free_async_redis;
     }
-    if(0 > draw_line(84, 0, 84, 239, COLOR_WHITE)) {
+    if(0 > draw_line(FORCAST_TEMP_SEP_LINE_X_START, FORCAST_TEMP_SEP_LINE_Y_START, FORCAST_TEMP_SEP_LINE_X_END, FORCAST_TEMP_SEP_LINE_Y_END, FG_COLOR)) {
         goto l_free_async_redis;
     }
-    if(0 > draw_line(163, 0, 163, 239, COLOR_WHITE)) {
+    if(0 > draw_line(FORCAST_HUMIDITY_SEP_LINE_X_START, FORCAST_HUMIDITY_SEP_LINE_Y_START, FORCAST_HUMIDITY_SEP_LINE_X_END, FORCAST_HUMIDITY_SEP_LINE_Y_END, FG_COLOR)) {
         goto l_free_async_redis;
     }
-    if(0 > draw_line(242, 0, 242, 239, COLOR_WHITE)) {
+    if(0 > draw_line(FORCAST_WIND_SEP_LINE_X_START, FORCAST_WIND_SEP_LINE_Y_START, FORCAST_WIND_SEP_LINE_X_END, FORCAST_WIND_SEP_LINE_Y_END, FG_COLOR)) {
         goto l_free_async_redis;
     }
-
-    // Initialize sensor
-    for(int i = 0; i < 4; i++) {
-        LOG_DETAILS("HGET %s/%s %s%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i);
-        reply = redisCommand(sync_context,"HGET %s/%s %s%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i);
-
-        if(NULL == reply) {
-            LOG_ERROR("Failed to sync query redis sensor name config %s", sync_context->errstr);
-            goto l_free_async_redis;
-        }
-        
-        if(NULL != reply->str) {
-            LOG_DETAILS("Get sensor name %s", reply->str);
-            if(0 > draw_sensor_name(i, reply->str)) {
-                LOG_ERROR("Failed to draw sensor name %d", i);
-                goto l_free_async_redis;
-            }
-
-            LOG_DETAILS("SUBSCRIBE %s/%s %s%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i);
-            redisAsyncCommand(gs_async_context, drawSensorNameCallback, &gs_idx_name[i], "SUBSCRIBE %s/%s %s%d", FLAG_KEY, serv_ip, SENSOR_NAME_TOPIC, i);
-        }
-        
-        freeReplyObject(reply);
-
-        LOG_DETAILS("HGET %s/%s %s%d", FLAG_KEY, serv_ip, SENSOR_TOPIC, i);
-        reply = redisCommand(sync_context,"HGET %s/%s %s%d", FLAG_KEY, serv_ip, SENSOR_TOPIC, i);
-
-        if(NULL == reply) {
-            LOG_ERROR("Failed to sync query redis sensor value config %s", sync_context->errstr);
-            goto l_free_async_redis;
-        }
-        
-        if(NULL != reply->str) {
-            redisReply* reply2 = redisCommand(sync_context,"GET %s", reply->str);
-            
-            if(NULL == reply2) {
-                LOG_ERROR("Failed to sync query redis sensor value topic %s", sync_context->errstr);
-                goto l_free_async_redis;
-            }
-            
-            if(NULL != reply2->str) {
-                if(0 > draw_sensor(i, reply2->str)) {
-                    LOG_ERROR("Failed to draw sensor name %d", i);
-                    freeReplyObject(reply2);
-                    goto l_free_async_redis;
-                }
-            }
-            
-            freeReplyObject(reply2);
-
-            redisAsyncCommand(gs_async_context, drawSensorCallback, &gs_idx_name[i], "SUBSCRIBE %s", reply->str);
-        }
-        
-        freeReplyObject(reply);
+    if(0 > draw_line(FORCAST_AREA1_SEP_LINE_X_START, FORCAST_AREA1_SEP_LINE_Y_START, FORCAST_AREA1_SEP_LINE_X_END, FORCAST_AREA1_SEP_LINE_Y_END, FG_COLOR)) {
+        goto l_free_async_redis;
     }
-
-    // Initialize brightness
-    LOG_DETAILS("GET %s/%s/%s", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC);
-    reply = redisCommand(sync_context,"GET %s/%s/%s", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC);
-
-    if(NULL == reply) {
-        LOG_ERROR("Failed to sync query redis sensor topic %s", sync_context->errstr);
+    if(0 > draw_line(AREA1_AREA2_SEP_LINE_X_START, AREA1_AREA2_SEP_LINE_Y_START, AREA1_AREA2_SEP_LINE_X_END, AREA1_AREA2_SEP_LINE_Y_END, FG_COLOR)) {
+        goto l_free_async_redis;
+    }
+    if(0 > draw_line(AREA2_TARGET_SEP_LINE_X_START, AREA2_TARGET_SEP_LINE_Y_START, AREA2_TARGET_SEP_LINE_X_END, AREA2_TARGET_SEP_LINE_Y_END, FG_COLOR)) {
+        goto l_free_async_redis;
+    }
+    if(0 > draw_line(TARGET_MINUS_SEP_LINE_X_START, TARGET_MINUS_SEP_LINE_Y_START, TARGET_MINUS_SEP_LINE_X_END, TARGET_MINUS_SEP_LINE_Y_END, FG_COLOR)) {
+        goto l_free_async_redis;
+    }
+    if(0 > draw_line(TARGET_PLUS_SEP_LINE_X_START, TARGET_PLUS_SEP_LINE_Y_START, TARGET_PLUS_SEP_LINE_X_END, TARGET_PLUS_SEP_LINE_Y_END, FG_COLOR)) {
+        goto l_free_async_redis;
+    }
+    if(0 > draw_string(TARGET_MINUS_X_START, TARGET_MINUS_Y_START, TARGET_MINUS_X_END, TARGET_MINUS_Y_END, FG_COLOR, TARGET_MINUS_FONT_SIZE, "-")) {
+        goto l_free_async_redis;
+    }
+    if(0 > draw_string(TARGET_PLUS_X_START, TARGET_PLUS_Y_START, TARGET_PLUS_X_END, TARGET_PLUS_Y_END, FG_COLOR, TARGET_PLUS_FONT_SIZE, "+")) {
         goto l_free_async_redis;
     }
     
-    if(NULL != reply->str) {
-        if(0 > set_brightness(atoi(reply->str) & 0xFF)) {
-            LOG_ERROR("Failed to set brightness");
-            goto l_free_async_redis;
-        }
+    // Check enabled switch count
+    LOG_INFO("Load switch config from redis!");
+    EXEC_REDIS_CMD(gs_sw_config, l_free_async_redis, "HKEYS %s/%s/%s", FLAG_KEY, serv_ip, SWITCH_TOPIC);
+    
+    // Draw switch area
+    if(0 > draw_sw_lines()) {
+        LOG_ERROR("Failed to draw switch area lines!");
+        goto l_free_sw_config;
     }
     
+    ASYNC_REDIS_CMD(drawTimeCallback, NULL, "SUBSCRIBE time");
+
+    EXEC_REDIS_CMD(reply, l_free_sw_config, "GET weather/forcast");
+    if(0 > draw_weather(reply->str)) {
+        LOG_ERROR("Failed to draw weather info!");
+        goto l_free_redis_reply;
+    }
     freeReplyObject(reply);
+    reply = NULL;
+
+    ASYNC_REDIS_CMD(drawWeatherCallback, NULL, "SUBSCRIBE weather/forcast");
+
+    EXEC_REDIS_CMD(reply, l_free_sw_config, "GET weather/temperature");
+    if(0 > draw_temp(reply->str)) {
+        LOG_ERROR("Failed to draw temperature info!");
+        goto l_free_redis_reply;
+    }
+    freeReplyObject(reply);
+    reply = NULL;
+
+    ASYNC_REDIS_CMD(drawTempCallback, NULL, "SUBSCRIBE weather/temperature");
+
+    EXEC_REDIS_CMD(reply, l_free_sw_config, "GET weather/humidity");
+    if(0 > draw_humidity(reply->str)) {
+        LOG_ERROR("Failed to draw humidity info!");
+        goto l_free_redis_reply;
+    }
+    freeReplyObject(reply);
+    reply = NULL;
+
+    ASYNC_REDIS_CMD(drawHumidityCallback, NULL, "SUBSCRIBE weather/humidity");
+
+    EXEC_REDIS_CMD(reply, l_free_sw_config, "GET weather/wind");
+    if(0 > draw_wind(reply->str)) {
+        LOG_ERROR("Failed to draw wind info!");
+        goto l_free_redis_reply;
+    }
+    freeReplyObject(reply);
+    reply = NULL;
+
+    ASYNC_REDIS_CMD(drawWindCallback, NULL, "SUBSCRIBE weather/wind");
+
+    EXEC_REDIS_CMD(reply, l_free_sw_config, "GET weather/aqi");
+    if(0 > draw_aqi(reply->str)) {
+        LOG_ERROR("Failed to draw AQI info!");
+        goto l_free_redis_reply;
+    }
+    freeReplyObject(reply);
+    reply = NULL;
     
-    LOG_DETAILS("SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC);
-    redisAsyncCommand(gs_async_context, setBrightnessCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC);
+    ASYNC_REDIS_CMD(drawAqiCallback, NULL, "SUBSCRIBE weather/aqi");
+
+    EXEC_REDIS_CMD(reply, l_free_sw_config, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, AREA1_TOPIC, NAME_TOPIC);
+    if(NULL != reply->str) {
+        ASYNC_REDIS_CMD(drawArea1NameCallback, NULL, "SUBSCRIBE %s", reply->str);
+        EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
+        if(0 > draw_area1_name(reply2->str)) {
+            LOG_ERROR("Failed to draw area 1 name info!");
+            goto l_free_redis_reply;
+        }
+        freeReplyObject(reply2);
+        reply2 = NULL;
+    }
+    freeReplyObject(reply);
+    reply = NULL;
     
-    // Initialize switch
-    for(int i = 0; i < 6; i++) {
-        LOG_DETAILS("HGET %s/%s %s%d", FLAG_KEY, serv_ip, SW_NAME_TOPIC, i);
-        reply = redisCommand(sync_context,"HGET %s/%s %s%d", FLAG_KEY, serv_ip, SW_NAME_TOPIC, i);
-
-        if(NULL == reply) {
-            LOG_ERROR("Failed to sync query redis switch name config %s", sync_context->errstr);
-            goto l_free_async_redis;
+    EXEC_REDIS_CMD(reply, l_free_sw_config, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, AREA1_TOPIC, TEMP_TOPIC);
+    if(NULL != reply->str) {
+        ASYNC_REDIS_CMD(drawArea1TempCallback, NULL, "SUBSCRIBE %s", reply->str);
+        EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
+        if(0 > draw_area1_temp(reply2->str)) {
+            LOG_ERROR("Failed to draw area 1 temperature info!");
+            goto l_free_redis_reply;
         }
-        
-        if(NULL != reply->str) {
-            if(0 > draw_sw_name(i, reply->str)) {
-                LOG_ERROR("Failed to draw sensor name %d", i);
-                goto l_free_async_redis;
-            }
-
-            redisAsyncCommand(gs_async_context, drawSWNameCallback, &gs_idx_name[i], "SUBSCRIBE %s", reply->str);
+        freeReplyObject(reply2);
+        reply2 = NULL;
+    }
+    freeReplyObject(reply);
+    reply = NULL;
+    
+    EXEC_REDIS_CMD(reply, l_free_sw_config, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, AREA1_TOPIC, BRIGHTNESS_TOPIC);
+    if(NULL != reply->str) {
+        ASYNC_REDIS_CMD(drawArea1BrightnessCallback, NULL, "SUBSCRIBE %s", reply->str);
+        EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
+        if(0 > draw_area1_brightness(reply2->str)) {
+            LOG_ERROR("Failed to draw area 1 brightness info!");
+            goto l_free_redis_reply;
         }
-        
+        freeReplyObject(reply2);
+        reply2 = NULL;
+    }
+    freeReplyObject(reply);
+    reply = NULL;
+    
+    EXEC_REDIS_CMD(reply, l_free_sw_config, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, AREA2_TOPIC, NAME_TOPIC);
+    if(NULL != reply->str) {
+        ASYNC_REDIS_CMD(drawArea2NameCallback, NULL, "SUBSCRIBE %s", reply->str);
+        EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
+        if(0 > draw_area1_name(reply2->str)) {
+            LOG_ERROR("Failed to draw area 2 name info!");
+            goto l_free_redis_reply;
+        }
+        freeReplyObject(reply2);
+        reply2 = NULL;
+    }
+    freeReplyObject(reply);
+    reply = NULL;
+    EXEC_REDIS_CMD(reply, l_free_sw_config, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, AREA2_TOPIC, TEMP_TOPIC);
+    if(NULL != reply->str) {
+        ASYNC_REDIS_CMD(drawArea2TempCallback, NULL, "SUBSCRIBE %s", reply->str);
+        EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
+        if(0 > draw_area1_temp(reply2->str)) {
+            LOG_ERROR("Failed to draw area 2 temperature info!");
+            goto l_free_redis_reply;
+        }
+        freeReplyObject(reply2);
+        reply2 = NULL;
+    }
+    freeReplyObject(reply);
+    reply = NULL;
+    
+    EXEC_REDIS_CMD(reply, l_free_sw_config, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, AREA2_TOPIC, BRIGHTNESS_TOPIC);
+    if(NULL != reply->str) {
+        ASYNC_REDIS_CMD(drawArea2BrightnessCallback, NULL, "SUBSCRIBE %s", reply->str);
+        EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
+        if(0 > draw_area1_brightness(reply2->str)) {
+            LOG_ERROR("Failed to draw area 2 brighness info!");
+            goto l_free_redis_reply;
+        }
+        freeReplyObject(reply2);
+        reply2 = NULL;
+    }
+    freeReplyObject(reply);
+    reply = NULL;
+
+    EXEC_REDIS_CMD(reply, l_free_async_redis, "GET %s/%s/%s", FLAG_KEY, serv_ip, TARGET_TEMP_TOPIC);
+    if(NULL != reply->str) {
+        ASYNC_REDIS_CMD(drawTargetTempCallback, NULL, "SUBSCRIBE %s", reply->str);
+        EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
+        if(0 > draw_area1_brightness(reply2->str)) {
+            LOG_ERROR("Failed to draw target temperature info!");
+            goto l_free_redis_reply;
+        }
+        freeReplyObject(reply2);
+        reply2 = NULL;
+    }
+    freeReplyObject(reply);
+    reply = NULL;
+    
+    for(size_t i = 0; i < gs_sw_config->elements; i++) {
+        EXEC_REDIS_CMD(reply, l_free_async_redis, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, SWITCH_TOPIC, gs_sw_config->element[i]->str);
+        ASYNC_REDIS_CMD(drawSWCallback, &sw_idx[i], "SUBSCRIBE %s", reply->str);
+        EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", gs_sw_config->element[i]->str);
+        if(0 >  draw_sw(i, reply2->str)) {
+            LOG_ERROR("Failed to draw switch %d info!", i);
+            goto l_free_redis_reply;
+        }
+        freeReplyObject(reply2);
+        reply2 = NULL;
         freeReplyObject(reply);
+        reply = NULL;
 
-        LOG_DETAILS("HGET %s/%s %s%d", FLAG_KEY, serv_ip, SW_TOPIC, i);
-        reply = redisCommand(sync_context,"HGET %s/%s %s%d", FLAG_KEY, serv_ip, SW_TOPIC, i);
-
-        if(NULL == reply) {
-            LOG_ERROR("Failed to sync query redis switch status config %s", sync_context->errstr);
-            goto l_free_async_redis;
-        }
-        
-        if(NULL != reply->str) {
-            redisReply* reply2 = redisCommand(sync_context,"GET %s", reply->str);
-            
-            if(NULL == reply2) {
-                LOG_ERROR("Failed to sync query redis sensor status topic %s", sync_context->errstr);
-                goto l_free_async_redis;
-            }
-            
-            if(NULL != reply2->str) {
-                if(0 > draw_sw_status(i, 0 != strcmp("0", reply2->str))) {
-                    LOG_ERROR("Failed to draw sensor name %d", i);
-                    freeReplyObject(reply2);
-                    goto l_free_async_redis;
-                }
-            }
-            
-            freeReplyObject(reply2);
-
-            redisAsyncCommand(gs_async_context, drawSWStatusCallback, &gs_idx_name[i], "SUBSCRIBE %s", reply->str);
-        }
-        
-        freeReplyObject(reply);
     }
     
-    // Subscribe changes for log_level, exit, reset
-    LOG_DETAILS("SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, EXIT_FLAG_VALUE);
-    redisAsyncCommand(gs_async_context, exitCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, EXIT_FLAG_VALUE);
-    LOG_DETAILS("SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, RESET_FLAG_VALUE);
-    redisAsyncCommand(gs_async_context, resetCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, RESET_FLAG_VALUE);
-    LOG_DETAILS("SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
-    redisAsyncCommand(gs_async_context, setLogLevelCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
-
+    LOG_DETAILS("Started running!");
     event_base_dispatch(base);
+
+l_free_redis_reply:
+    if(NULL != reply2)
+        freeReplyObject(reply2);
+
+    if(NULL != reply)
+        freeReplyObject(reply);
+
+l_free_sw_config:
+    freeReplyObject(gs_sw_config);
+    gs_sw_config = NULL;
         
 l_free_async_redis:
     redisAsyncFree(gs_async_context);
     event_base_free(base);
+    base = NULL;
     LOG_INFO("exit!");
     
 l_free_sync_redis:
-    if(NULL != sync_context) {
-        redisFree(sync_context);
-        sync_context = NULL;
+    if(NULL != gs_sync_context) {
+        redisFree(gs_sync_context);
+        gs_sync_context = NULL;
     }
     
 l_socket_cleanup:

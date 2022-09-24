@@ -1,4 +1,4 @@
-TARGET=cargador godown_keeper touch touch_processor sensor lcd celsius_converter
+TARGET=cargador godown_keeper touch sensor lcd celsius_converter time
 OBJ=log.o to_socket.o 
 
 STLIB_MAKE_CMD=$(AR) rcs
@@ -44,10 +44,10 @@ cargador:src/cargador.c $(HIREDIS_LIB) $(COMMON_LIB)
 godown_keeper:src/godown_keeper.c $(HIREDIS_LIB) $(COMMON_LIB)
 	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS)
 	
-touch:src/touch.c $(HIREDIS_LIB) $(COMMON_LIB)
+time:src/time.c $(HIREDIS_LIB) $(COMMON_LIB)
 	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS)
 
-touch_processor:src/touch_processor.c $(HIREDIS_LIB) $(COMMON_LIB)
+touch:src/touch.c $(HIREDIS_LIB) $(COMMON_LIB)
 	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS)
 	
 sensor:src/sensor.c $(HIREDIS_LIB) $(COMMON_LIB)

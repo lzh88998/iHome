@@ -39,15 +39,46 @@
 #define REDIS_IP                "127.0.0.1"
 #define REDIS_PORT              6379
 
-#define FLAG_KEY                "touch"
+#define FLAG_KEY                "lcd"
 #define EXIT_FLAG_VALUE         "exit"
+#define LOG_LEVEL_FLAG_KEY      "log_level"
+#define BRIGHTNESS_TOPIC        "brightness"
+#define SWITCH_TOPIC            "switch"
+#define TARGET_TEMP_TOPIC       "target_temp"
 
-#define MSG_INTERVAL_MS         300
+#define RECEIVE_STATE_CMD       0
+#define RECEIVE_STATE_X_FIRST   1
+#define RECEIVE_STATE_X_SECOND  2
+#define RECEIVE_STATE_Y_FIRST   3
+#define RECEIVE_STATE_Y_SECOND  4
+#define RECEIVE_STATE_FINISHED  5
+
+#define PROCESS_CLICK_OK        0
+#define PROCESS_CLICK_FAILED    -1
+
+#define TOUCH_MAX_SW_CNT        6
+
+#define LCD_ACTIVE_BACKLIGHT    0
+#define LCD_IDLE_BACKLIGHT      255
 
 static int gs_socket = -1;
 static redisContext *gs_sync_context = NULL;
+static char* serv_ip;
 
 static int gs_exit = 0;
+
+static char gs_sw_status[TOUCH_MAX_SW_CNT];
+static unsigned char target_temp;
+static redisReply *gs_sw_config = NULL;
+static redisReply *gs_target_temp_topic = NULL;
+
+#define EXEC_REDIS_CMD(reply, goto_label, cmd, ...)		LOG_DEBUG(cmd, ##__VA_ARGS__);\
+                                                        reply = redisCommand(gs_sync_context, cmd, ##__VA_ARGS__);\
+                                                        if(NULL == reply) {\
+                                                            LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);\
+                                                            LOG_ERROR(cmd, ##__VA_ARGS__);\
+                                                            goto goto_label;\
+                                                        }
 
 /*
  * When user input incorrect data, this service will
@@ -76,10 +107,171 @@ void print_usage(int argc, char **argv) {
     printf("Usage: (<optional parameters>)\n");
     printf("%s controller_ip controller_port <log level> <redis_ip> <redis_port>\n", argv[0]);
     printf("E.g.:\n");
-    printf("%s 192.168.100.100 5000\n\n", argv[0]);
-    printf("%s 192.168.100.100 5000 debug\n\n", argv[0]);
-    printf("%s 192.168.100.100 5000 127.0.0.1 6379\n\n", argv[0]);
-    printf("%s 192.168.100.100 5000 debug 127.0.0.1 6379\n\n", argv[0]);
+    printf("%s 192.168.100.100 5001\n\n", argv[0]);
+    printf("%s 192.168.100.100 5001 debug\n\n", argv[0]);
+    printf("%s 192.168.100.100 5001 127.0.0.1 6379\n\n", argv[0]);
+    printf("%s 192.168.100.100 5001 debug 127.0.0.1 6379\n\n", argv[0]);
+}
+
+/*
+ * When click on the touch screen is received, the coordinates of the 
+ * clicked pixel is passed to process_click function through x and y. 
+ * The process_click function will publish event according to given
+ * input
+ * 
+ * Parameters:
+ * unsigned int x           The x coordinate of clicked position
+ * unsigned int y           The y coordinate of clicked position
+ * 
+ * Return value:
+ * 0                        Execution Successful
+ * Others                   Failed
+ */
+int process_click(unsigned int x, unsigned int y) {
+    redisReply* reply = NULL;
+    if(160 > x) {
+        if(180 < y) {
+            unsigned char bDirty = 0;
+            if(target_temp > 150) {
+                LOG_WARNING("Target temperature reached low limit");
+                target_temp = 150;
+                bDirty = 1;
+            }
+            
+            if(target_temp < 100) {
+                LOG_WARNING("Target temperature reached high limit");
+                target_temp = 100;
+                bDirty = 1;
+            }
+                
+            if(x >= 80 && target_temp > 100) {
+                LOG_DETAILS("Increasing target temperature");
+                target_temp--;
+                bDirty = 1;
+            }
+            
+            if(x < 80 && target_temp < 150) {
+                LOG_DETAILS("Decreasing target temperature");
+                target_temp++;
+                bDirty = 1;
+            }
+
+            if(bDirty) {
+                EXEC_REDIS_CMD(reply, l_process_click_failed, "PUBLISH %s %d", gs_target_temp_topic->str, target_temp);
+                freeReplyObject(reply);
+                reply = NULL;
+            }
+
+            freeReplyObject(reply);
+        } else {
+            // clicked on info area, do nothing
+        }
+    } else {
+        int clicked_idx = -1;
+        switch(gs_sw_config->elements) {
+            case 1:
+                // publish clicked event to only topic
+                clicked_idx = 0;
+                break;
+            case 2:
+                if(y < 120) {
+                    clicked_idx = 0;
+                } else {
+                    clicked_idx = 1;
+                }
+                break;
+            case 3:
+                if(y < 80) {
+                    clicked_idx = 0;
+                } else if(y < 160) {
+                    clicked_idx = 1;
+                } else {
+                    clicked_idx = 2;
+                }
+                break;
+            case 4:
+                if(y < 120) {
+                    if(x < 240) {
+                        clicked_idx = 0;
+                    } else {
+                        clicked_idx = 1;
+                    }
+                } else {
+                    if(x < 240) {
+                        clicked_idx = 2;
+                    } else {
+                        clicked_idx = 3;
+                    }
+                }
+                break;
+            case 5:
+                if(y < 80) {
+                    if(x < 240) {
+                        clicked_idx = 0;
+                    } else {
+                        clicked_idx = 1;
+                    }
+                } else if(y < 160) {
+                    if(x < 240) {
+                        clicked_idx = 2;
+                    } else {
+                        clicked_idx = 3;
+                    }
+                } else {
+                    if(x < 240) {
+                        clicked_idx = 4;
+                    } else {
+                    }
+                }
+                break;
+            case 6:
+                if(y < 80) {
+                    if(x < 240) {
+                        clicked_idx = 0;
+                    } else {
+                        clicked_idx = 1;
+                    }
+                } else if(y < 160) {
+                    if(x < 240) {
+                        clicked_idx = 2;
+                    } else {
+                        clicked_idx = 3;
+                    }
+                } else {
+                    if(x < 240) {
+                        clicked_idx = 4;
+                    } else {
+                        clicked_idx = 5;
+                    }
+                }
+                break;
+            default:
+                // do nothing if the config is invalid
+                break;
+        }
+
+        if(clicked_idx >= 0){
+            // get sw key
+            redisReply *reply2 = NULL;
+            EXEC_REDIS_CMD(reply, l_process_click_failed, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, SWITCH_TOPIC, gs_sw_config->element[clicked_idx]->str);
+            gs_sw_status[clicked_idx] = !gs_sw_status[clicked_idx];
+            EXEC_REDIS_CMD(reply, l_process_click_failed, "PUBLISH %s %d", reply->str, gs_sw_status[clicked_idx]);
+            freeReplyObject(reply2);
+            reply2 = NULL;
+            freeReplyObject(reply);
+            reply = NULL;
+        }
+    }
+    
+    return PROCESS_CLICK_OK;
+
+l_process_click_failed:
+    if(reply) {
+        freeReplyObject(reply);
+        reply = NULL;
+    }
+        
+    return PROCESS_CLICK_FAILED;
 }
 
 /*
@@ -105,25 +297,19 @@ void print_usage(int argc, char **argv) {
  */
  int main (int argc, char **argv) {
     
-l_start:
 #ifndef _WIN32
     signal(SIGPIPE, SIG_IGN);
 #endif
 
-    unsigned char temp = 0;
-    unsigned char cmd = 0;
+    unsigned char temp, cur_state = 0;
+    unsigned char cmd = 0, active = 0, inactive_cnt = 0;
     unsigned int  x = 0, y = 0;
-    int buffer_state = 0;
     
-    const char* serv_ip;
     int serv_port = 0;
     const char* redis_ip;
     int redis_port = REDIS_PORT;
     
     struct timeval timeout = { 0, 100000 }; 
-    struct timeval last_time, cur_time;
-    gettimeofday(&last_time, NULL);
-    gettimeofday(&cur_time, NULL);
 
     switch(argc) {
         case 6:
@@ -163,20 +349,35 @@ l_start:
             return -1;
     }
         
+l_start:
+    cur_state = 0;
+    x = 0;
+    y = 0;
+    cmd = 0;
+    active = 0;
+    inactive_cnt = 0;
+    
+    LOG_DETAILS("Initializing switch status!");
+    for(int i = 0; i < TOUCH_MAX_SW_CNT; i++) {
+        gs_sw_status[i] = 0;
+    }
+
+    LOG_DETAILS("Connecting to touch controller %s %d!", serv_ip, serv_port);
     gs_socket = to_connect(serv_ip, serv_port);
     if(0 > gs_socket) {
         LOG_ERROR("Error creating socket!");
         goto l_socket_cleanup;
     }
     
-/*  
+    // Receive initial bytes to activate W5500 keep alive
     if(0 > to_recv(gs_socket, &temp, 1, 0)) {
-        LOG_ERROR("Error receiving initial data! %d %s", ret, strerror(errno));
+        LOG_ERROR("Error receiving initial data! %s", strerror(errno));
         goto l_socket_cleanup;
     }
-    LOG_INFO("Connected to controller, remote socket: %d", temp);
-*/    
 
+    LOG_DETAILS("Connected to touch controller, remote socket: %d", temp);
+
+    LOG_DETAILS("Connecting to redis %s %d!", redis_ip, redis_port);
     gs_sync_context = redisConnectWithTimeout(redis_ip, redis_port, timeout);
     if(NULL == gs_sync_context) {
         LOG_ERROR("Connection error: can't allocate redis context");
@@ -188,253 +389,189 @@ l_start:
         goto l_free_redis;
     }
 
-    redisReply* reply = redisCommand(gs_sync_context,"PING");
-    if(NULL == reply) {
-        LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
-        goto l_free_redis;
-    }
+    LOG_DETAILS("Testing redis connection!");
+
+    // Test redis connection
+    redisReply* reply = NULL;
+    
+    EXEC_REDIS_CMD(reply, l_free_redis, "PING");
     LOG_DEBUG("PING: %s", reply->str);
     freeReplyObject(reply);
+    reply = NULL;
     
-    LOG_INFO("Start loop!");
+    LOG_DETAILS("Getting switch config!");
+    EXEC_REDIS_CMD(gs_sw_config, l_free_redis, "HKEYS %s/%s/%s", FLAG_KEY, serv_ip, SWITCH_TOPIC);
+    
+    LOG_DETAILS("Loading switch status!");
+    redisReply *reply2 = NULL;
+    for(size_t i = 0; i < gs_sw_config->elements; i++) {
+        EXEC_REDIS_CMD(reply, l_free_redis_reply, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, SWITCH_TOPIC, gs_sw_config->element[i]->str);
+        EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
+        if(reply2->str && 0 == strcmp("1", reply2->str)) {
+            gs_sw_status[i] = 1;
+        }
+        freeReplyObject(reply2);
+        reply2 = NULL;
+        freeReplyObject(reply);
+        reply = NULL;
+    }
+    
+    LOG_DETAILS("Loading target temperature!");
+    EXEC_REDIS_CMD(gs_target_temp_topic, l_free_redis_reply, "GET %s/%s/%s", FLAG_KEY, serv_ip, TARGET_TEMP_TOPIC);
+    
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "GET %s", gs_target_temp_topic->str);
+    
+    if(reply->str) {
+        int t = atoi(reply->str);
+        if(t >= 150) {
+            target_temp = 150;
+        } else if(t <= 100) {
+            target_temp = 100;
+        } else {
+            target_temp = t;
+        }
+    } else {
+        target_temp = 127;
+    }
+    
+    freeReplyObject(reply);
+    reply = NULL;
+    
+    LOG_DETAILS("Publish current target temperture!");
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "PUBLISH %s %d", gs_target_temp_topic->str, target_temp);
+    freeReplyObject(reply);
+    reply = NULL;
+    
+    LOG_DETAILS("Set LCD backlight to max!");
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "PUBLISH %s/%s/%s %d", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC, LCD_ACTIVE_BACKLIGHT);
+    freeReplyObject(reply);
+    reply = NULL;
+    
+    active = 1;
 
-    do {
-        LOG_DEBUG("Start Receiving");
-        if(-1 == to_recv(gs_socket, &temp, 1, 0)) {
-            LOG_DEBUG("Receive returned -1, %s", strerror(errno));
-            if(EAGAIN == errno || EWOULDBLOCK == errno) {
-                // receive timeout
-                // Send out pending MSG
-                if(0 != cmd) {
-                    LOG_DETAILS("Get time info");
-                    gettimeofday(&cur_time, NULL);
-                    if(((cur_time.tv_sec - last_time.tv_sec) * 1000 + 
-                        (cur_time.tv_usec - last_time.tv_usec) / 1000) > MSG_INTERVAL_MS) {
-                        // only send out when there is enough interval
-                        last_time.tv_sec = cur_time.tv_sec;
-                        last_time.tv_usec = cur_time.tv_usec;
-                        LOG_DETAILS("PUBLISH %s/%s 0x%x %d %d", FLAG_KEY, serv_ip, cmd, x, y);
-                        reply = redisCommand(gs_sync_context,"PUBLISH %s/%s %d/%d/%d", FLAG_KEY, serv_ip, cmd, x, y);
-                        if(NULL == reply) {
-                            LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
-                            goto l_free_redis;
-                        }
-                        if(NULL != reply->str) {
-                            LOG_DETAILS("%s", reply->str);
-                        }
-                        freeReplyObject(reply);
-                        
-                        // clear cmd
-                        cmd = 0;
-                    }
-                }
-                
-                // Check log level
-                LOG_DEBUG("Check log level")
-                reply = redisCommand(gs_sync_context,"GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
-                if(NULL == reply) {
-                    LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
-                    goto l_free_redis;
-                }
-                
-                LOG_DETAILS("Get log level returned")
-                
-                if(NULL != reply->str) {
-                    LOG_DETAILS("%s", reply->str);
-                    if(0 > log_set_level(reply->str)) {
-                        LOG_WARNING("Invalid log option: %s", reply->str);
-                    } else {
-                        freeReplyObject(reply);
-
-                        // delete the flag ensure not find it next start
-                        reply = redisCommand(gs_sync_context,"DEL %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
-                        if(NULL == reply) {
-                            LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
-                            goto l_free_redis;
-                        }
-                        if(NULL != reply->str) {
-                            LOG_DETAILS("%s", reply->str);
-                        }
-                    }
-                }
-                
-                freeReplyObject(reply);
-
-                // Check exit flag
-                LOG_DEBUG("Check exit flag")
-                reply = redisCommand(gs_sync_context,"GET %s/%s/%s", FLAG_KEY, serv_ip, EXIT_FLAG_VALUE);
-                if(NULL == reply) {
-                    LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
-                    goto l_free_redis;
-                }
-                
-                if(NULL != reply->str) {
-                    LOG_DETAILS("%s", reply->str);
-                    if(0 == strcmp(EXIT_FLAG_VALUE, reply->str)) {
-                        gs_exit = 1;
-                        
-                        freeReplyObject(reply);
-                        
-                        // delete the flag ensure not find it next start
-                        reply = redisCommand(gs_sync_context,"DEL %s/%s/%s", FLAG_KEY, serv_ip, EXIT_FLAG_VALUE);
-                        if(NULL == reply) {
-                            LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
-                            goto l_free_redis;
-                        }
-                        if(NULL != reply->str) {
-                            LOG_DETAILS("%s", reply->str);
-                        }
-                    }
-                }
-                
-                freeReplyObject(reply);
-
-                // Check reset flag
-                LOG_DEBUG("Check reset flag")
-                reply = redisCommand(gs_sync_context,"GET %s/%s/%s", FLAG_KEY, serv_ip, RESET_FLAG_VALUE);
-                if(NULL == reply) {
-                    LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
-                    goto l_free_redis;
-                }
-                
-                if(NULL != reply->str) {
-                    LOG_DETAILS("%s", reply->str);
-                    if(0 == strcmp(RESET_FLAG_VALUE, reply->str)) {
-                        freeReplyObject(reply);
-                        
-                        // delete the flag ensure not find it next start
-                        reply = redisCommand(gs_sync_context,"DEL %s/%s/%s", FLAG_KEY, serv_ip, RESET_FLAG_VALUE);
-                        if(NULL == reply) {
-                            LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
-                            goto l_free_redis;
-                        }
-                        if(NULL != reply->str) {
-                            LOG_DETAILS("%s", reply->str);
-                        }
-
-                        freeReplyObject(reply);
-                        goto l_free_redis;
-                    }
-                }
-                
-                freeReplyObject(reply);
-            } else {
-                // other errors
+    LOG_DETAILS("Start loop!");
+    
+    // main loop
+    while(!gs_exit) {
+        LOG_DETAILS("Start Receiving");
+        if(0 > to_recv(gs_socket, &temp, 1, 0)) {
+            if(EAGAIN != errno && EWOULDBLOCK != errno) {
+                // recv error
                 LOG_ERROR("Error receive bytes %s", strerror(errno));
-                goto l_free_redis;
+                goto l_free_redis_reply;
+            } 
+            
+            LOG_DETAILS("Receive timeout!");
+            LOG_DETAILS("Check log level!");
+            EXEC_REDIS_CMD(reply, l_free_redis_reply, "GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_KEY);
+            if(NULL != reply->str) {
+                if(LOG_SET_LEVEL_OK != log_set_level(reply->str)) {
+                    LOG_WARNING("Invalid log option: %s", reply->str);
+                }
+
+                freeReplyObject(reply);
+                reply = NULL;
+                
+                EXEC_REDIS_CMD(reply, l_free_redis_reply, "DEL %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_KEY);
             }
-        } else { //
-            LOG_DETAILS("Received 0x%x %d", temp, buffer_state);
-            switch(buffer_state) {
-                case 0: // first 0xB1/B2/B3
-                    if(0xB1 == temp) {
-                        switch(cmd) {
-                            case 0xB1:
-                                // this shouldn't happen as B3 should always come before B1.
-                                LOG_WARNING("Warning: invalid cmd state! 0x%x", cmd);
-                                break;
-                            case 0xB2: 
-                                // this shouldn't happen as B3 should always come before B1.
-                                LOG_WARNING("Warning: invalid cmd state! 0x%x", cmd);
-                                break;
-                            case 0xB3:
-                                // last msg haven't been sent out convert to move
-                                cmd = 0xB2;
-                                break;
-                            default: // last msg have been sent out, new click
-                                cmd = 0xB1;
-                                break;
-                        }
-                        buffer_state++;
-                    } else if(0xB2 == temp) {
-                        switch(cmd) {
-                            case 0xB1: // last msg haven't been sent out, keep click event
-                                break;
-                            case 0xB2: 
-                                // this shouldn't happen as B3 should always come before B1.
-                                LOG_WARNING("Warning: invalid cmd state! 0x%x", cmd);
-                                break;
-                            case 0xB3:
-                                // last msg haven't been sent out convert to move
-                                cmd = 0xB2;
-                                break;
-                            default: // last msg have been sent out, new click
-                                cmd = 0xB2;
-                                break;
-                        }
-                        buffer_state++;
-                    } else if(0xB3 == temp) {
-                        gettimeofday(&cur_time, NULL);
-                        if(((cur_time.tv_sec - last_time.tv_sec) * 1000 + 
-                            (cur_time.tv_usec - last_time.tv_usec) / 1000) > MSG_INTERVAL_MS) {
-                            // only send out when there is enough interval
-                            last_time.tv_sec = cur_time.tv_sec;
-                            last_time.tv_usec = cur_time.tv_usec;
-                            cmd = temp;
-                            LOG_DETAILS("PUBLISH %s/%s 0x%x %d %d", FLAG_KEY, serv_ip, cmd, x, y);
-                            reply = redisCommand(gs_sync_context,"PUBLISH %s/%s %d/%d/%d", FLAG_KEY, serv_ip, cmd, x, y);
-                            if(NULL == reply) {
-                                LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
-                                goto l_free_redis;
-                            }
-                            if(NULL != reply->str) {
-                                LOG_DETAILS("%s", reply->str);
-                            }
-                            freeReplyObject(reply);
-                            
-                            // clear cmd
-                            cmd = 0;
-                        } else {
-                            cmd = 0xB3;
-                        }
-                    }
+
+            freeReplyObject(reply);
+            reply = NULL;
+
+            LOG_DETAILS("Check exit flags!");
+            EXEC_REDIS_CMD(reply, l_free_redis_reply, "GET %s/%s/%s", FLAG_KEY, serv_ip, EXIT_FLAG_VALUE);
+            if(NULL != reply->str) {
+                if(0 == strcmp(EXIT_FLAG_VALUE, reply->str)) {
+                    gs_exit = 1;
+                }
+
+                freeReplyObject(reply);
+                reply = NULL;
+                
+                EXEC_REDIS_CMD(reply, l_free_redis_reply, "DEL %s/%s/%s", FLAG_KEY, serv_ip, EXIT_FLAG_VALUE);
+            }
+
+            freeReplyObject(reply);
+            reply = NULL;
+            
+            LOG_DETAILS("Check touch controller idle time!");
+            if(active) {
+                if(200 == inactive_cnt) {
+                    LOG_DETAILS("Touch idle timeout reduce backlight of LCD!");
+                    active = 0;
+                    EXEC_REDIS_CMD(reply, l_free_redis_reply, "PUBLISH %s/%s/%s %d", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC, LCD_IDLE_BACKLIGHT);
+                    freeReplyObject(reply);
+                    reply = NULL;
+                } else {
+                    inactive_cnt++;
+                }
+            }
+        } else {
+            LOG_DETAILS("Receiving data!");
+            switch(cur_state) {
+                case RECEIVE_STATE_CMD:
+                    cmd = temp;
                     break;
-                case 1: // x1 
+                case RECEIVE_STATE_X_FIRST:
                     x = temp;
-                    buffer_state++;
                     break;
-                case 2: // x2
+                case RECEIVE_STATE_X_SECOND:
                     x *= 256;
                     x += temp;
-                    buffer_state++;
                     break;
-                case 3: // y1
+                case RECEIVE_STATE_Y_FIRST:
                     y = temp;
-                    buffer_state++;
                     break;
-                case 4: // y2
+                case RECEIVE_STATE_Y_SECOND:
                     y *= 256;
                     y += temp;
-                    
-                    // this can be sure that not b3
-                    gettimeofday(&cur_time, NULL);
-                    if(((cur_time.tv_sec - last_time.tv_sec) * 1000 + 
-                        (cur_time.tv_usec - last_time.tv_usec) / 1000) > MSG_INTERVAL_MS) {
-                        // only send out when there is enough interval
-                        last_time.tv_sec = cur_time.tv_sec;
-                        last_time.tv_usec = cur_time.tv_usec;
-                        
-                        LOG_DETAILS("PUBLISH %s/%s 0x%x %d %d", FLAG_KEY, serv_ip, cmd, x, y);
-                        reply = redisCommand(gs_sync_context,"PUBLISH %s/%s %d/%d/%d", FLAG_KEY, serv_ip, cmd, x, y);
-                        if(NULL == reply) {
-                            LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
-                            goto l_free_redis;
-                        }
-                        if(NULL != reply->str) {
-                            LOG_DETAILS("%s", reply->str);
-                        }
-                        freeReplyObject(reply);
-                        
-                        // clear cmd
-                        cmd = 0;
-                    }
-
-                    buffer_state = 0;
                     break;
             }
+            
+            cur_state++;
+            if(RECEIVE_STATE_FINISHED == cur_state) {
+                cur_state = RECEIVE_STATE_CMD;
+                
+                // May need to change to publish switch or increase/decrease target temperature
+                LOG_DETAILS("Input %#X %d %d", cmd, x, y);
+                if(0xB1 == cmd) {
+                    inactive_cnt = 0;
+                    if(active) {
+                        LOG_DETAILS("Processing %#X %d %d", cmd, x, y);
+                        process_click(x, y);
+                    } else {
+                        LOG_DETAILS("LCD backlight is off, update backlight!");
+                        EXEC_REDIS_CMD(reply, l_free_redis_reply, "PUBLISH %s/%s/%s %d", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC, LCD_ACTIVE_BACKLIGHT);
+                        freeReplyObject(reply);
+                        reply = NULL;
+                        active = 1;
+                    }
+                }
+            }
         }
-    } while(!gs_exit);
+    }
     
+l_free_redis_reply:
+    if(reply) {
+        freeReplyObject(reply);
+        reply = NULL;
+    }
+    
+    if(reply2) {
+        freeReplyObject(reply2);
+        reply2 = NULL;
+    }
+
+    if(gs_sw_config) {
+        freeReplyObject(gs_sw_config);
+        gs_sw_config = NULL;
+    }
+    
+    if(gs_target_temp_topic) {
+        freeReplyObject(gs_target_temp_topic);
+        gs_target_temp_topic = NULL;
+    }
+
 l_free_redis:
     redisFree(gs_sync_context);
     
