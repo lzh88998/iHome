@@ -17,6 +17,7 @@
 #include <adapters/libevent.h>
 
 #include <iconv.h>
+#include <math.h>
 
 #include "log.h"
 #include "to_socket.h"
@@ -549,8 +550,8 @@ int convert_encoding(void) {
  * unsigned int color               font color, common values
  *                                  are defined in the beginning
  *                                  of this file
- * d
- * unsigned char font_size          font size in pixel, 
+ * 
+ * unsigned char font_size          font size in pixel, are
  *                                  common font sizes are 24 
  *                                  32 etc.
  * 
@@ -723,6 +724,48 @@ int draw_line(unsigned int x_start, unsigned int y_start, unsigned int x_end, un
     }
 
     return ret;
+}
+
+/*
+ * draw_celsius_temp is used to convert input temperature
+ * to celsius unit and draw string to LCD area
+ * draw_celsius_temp and main function
+ * 
+ * Parameters:
+ * unsigned int x_start             Location on LCD to draw
+ * unsigned int y_start             the string. The limits
+ * unsigned int x_end               of these parameters are
+ * unsigned int y_end               related with LCD. Common
+ *                                  320*240 LCD supports x 
+ *                                  from 0 to 319 and y from 
+ *                                  0 to 239
+ * 
+ * unsigned int color               font color, common values
+ *                                  are defined in the beginning
+ *                                  of this file
+ * 
+ * unsigned char font_size          font size in pixel, are
+ *                                  common font sizes are 24 
+ *                                  32 etc.
+ * 
+ * char* temp                       The temperature string
+ * 
+ * Return value:
+ * Equal or greater than 0 means successful
+ * Less than 0 means failed
+ */
+int draw_celsius_temp(unsigned int x_start, unsigned int y_start, unsigned int x_end, unsigned int y_end, unsigned char font_size, const char* temp) {
+    int v;
+    float celsius;
+    
+    v = atoi(temp);
+    celsius = 298.15 * 3950 / (log((float)v/(255-v)) * 298.15 + 3950) - 273.15;
+    
+    int ret = draw_rectangle(x_start, y_start, x_end, y_end, BG_COLOR);
+    if(0 > ret)
+        return ret;
+
+    return draw_string(x_start, y_start, x_end, y_end, FG_COLOR, font_size, "%.1f\xE2\x84\x83", celsius);
 }
 
 /*
@@ -1116,11 +1159,7 @@ void drawArea1NameCallback(redisAsyncContext *c, void *r, void *privdata) {
  * Less than 0 means failed
  */
 int draw_area1_temp(const char* temp) {
-    int ret = draw_rectangle(AREA1_TEMP_X_START, AREA1_TEMP_Y_START, AREA1_TEMP_X_END, AREA1_TEMP_Y_END, BG_COLOR);
-    if(0 > ret)
-        return ret;
-        
-    return draw_string(AREA1_TEMP_X_START, AREA1_TEMP_Y_START, AREA1_TEMP_X_END, AREA1_TEMP_Y_END, FG_COLOR, AREA1_TEMP_FONT_SIZE, temp);;
+    return draw_celsius_temp(AREA1_TEMP_X_START, AREA1_TEMP_Y_START, AREA1_TEMP_X_END, AREA1_TEMP_Y_END, AREA1_TEMP_FONT_SIZE, temp);;
 }
 
 /*
@@ -1278,11 +1317,7 @@ void drawArea2NameCallback(redisAsyncContext *c, void *r, void *privdata) {
  * Less than 0 means failed
  */
 int draw_area2_temp(const char* temp) {
-    int ret = draw_rectangle(AREA2_TEMP_X_START, AREA2_TEMP_Y_START, AREA2_TEMP_X_END, AREA2_TEMP_Y_END, BG_COLOR);
-    if(0 > ret)
-        return ret;
-        
-    return draw_string(AREA2_TEMP_X_START, AREA2_TEMP_Y_START, AREA2_TEMP_X_END, AREA2_TEMP_Y_END, FG_COLOR, AREA2_TEMP_FONT_SIZE, temp);
+    return draw_celsius_temp(AREA2_TEMP_X_START, AREA2_TEMP_Y_START, AREA2_TEMP_X_END, AREA2_TEMP_Y_END, AREA2_TEMP_FONT_SIZE, temp);
 }
 
 /*
@@ -1376,7 +1411,7 @@ void drawArea2BrightnessCallback(redisAsyncContext *c, void *r, void *privdata) 
 /*
  * draw_target_temp is used to draw target temperature
  * of LCD display. This is called from 
- * drawArea2BrightnessCallback and main function
+ * draw_target_temp and main function
  * 
  * Parameters:
  * char* temp   The temperature string
@@ -1386,10 +1421,7 @@ void drawArea2BrightnessCallback(redisAsyncContext *c, void *r, void *privdata) 
  * Less than 0 means failed
  */
 int draw_target_temp(const char* temp) {
-    int ret = draw_rectangle(TARGET_TEMP_X_START, TARGET_TEMP_Y_START, TARGET_TEMP_X_END, TARGET_TEMP_Y_END, BG_COLOR);
-    if(0 > ret)
-        return ret;
-    return draw_string(TARGET_TEMP_X_START, TARGET_TEMP_Y_START, TARGET_TEMP_X_END, TARGET_TEMP_Y_END, FG_COLOR, TARGET_TEMP_FONT_SIZE, temp);
+    return draw_celsius_temp(TARGET_TEMP_X_START, TARGET_TEMP_Y_START, TARGET_TEMP_X_END, TARGET_TEMP_Y_END, TARGET_TEMP_FONT_SIZE, temp);
 }
 
 /*
@@ -2104,9 +2136,11 @@ l_start:
     ASYNC_REDIS_CMD(drawTimeCallback, NULL, "SUBSCRIBE time");
 
     EXEC_REDIS_CMD(reply, l_free_sw_config, "GET weather/forcast");
-    if(0 > draw_weather(reply->str)) {
-        LOG_ERROR("Failed to draw weather info!");
-        goto l_free_redis_reply;
+    if(reply->str) {
+        if(0 > draw_weather(reply->str)) {
+            LOG_ERROR("Failed to draw weather info!");
+            goto l_free_redis_reply;
+        }
     }
     freeReplyObject(reply);
     reply = NULL;
@@ -2114,9 +2148,11 @@ l_start:
     ASYNC_REDIS_CMD(drawWeatherCallback, NULL, "SUBSCRIBE weather/forcast");
 
     EXEC_REDIS_CMD(reply, l_free_sw_config, "GET weather/temperature");
-    if(0 > draw_temp(reply->str)) {
-        LOG_ERROR("Failed to draw temperature info!");
-        goto l_free_redis_reply;
+    if(reply->str) {
+        if(0 > draw_temp(reply->str)) {
+            LOG_ERROR("Failed to draw temperature info!");
+            goto l_free_redis_reply;
+        }
     }
     freeReplyObject(reply);
     reply = NULL;
@@ -2124,9 +2160,11 @@ l_start:
     ASYNC_REDIS_CMD(drawTempCallback, NULL, "SUBSCRIBE weather/temperature");
 
     EXEC_REDIS_CMD(reply, l_free_sw_config, "GET weather/humidity");
-    if(0 > draw_humidity(reply->str)) {
-        LOG_ERROR("Failed to draw humidity info!");
-        goto l_free_redis_reply;
+    if(reply->str) {
+        if(0 > draw_humidity(reply->str)) {
+            LOG_ERROR("Failed to draw humidity info!");
+            goto l_free_redis_reply;
+        }
     }
     freeReplyObject(reply);
     reply = NULL;
@@ -2134,9 +2172,11 @@ l_start:
     ASYNC_REDIS_CMD(drawHumidityCallback, NULL, "SUBSCRIBE weather/humidity");
 
     EXEC_REDIS_CMD(reply, l_free_sw_config, "GET weather/wind");
-    if(0 > draw_wind(reply->str)) {
-        LOG_ERROR("Failed to draw wind info!");
-        goto l_free_redis_reply;
+    if(reply->str) {
+        if(0 > draw_wind(reply->str)) {
+            LOG_ERROR("Failed to draw wind info!");
+            goto l_free_redis_reply;
+        }
     }
     freeReplyObject(reply);
     reply = NULL;
@@ -2144,9 +2184,11 @@ l_start:
     ASYNC_REDIS_CMD(drawWindCallback, NULL, "SUBSCRIBE weather/wind");
 
     EXEC_REDIS_CMD(reply, l_free_sw_config, "GET weather/aqi");
-    if(0 > draw_aqi(reply->str)) {
-        LOG_ERROR("Failed to draw AQI info!");
-        goto l_free_redis_reply;
+    if(reply->str) {
+        if(0 > draw_aqi(reply->str)) {
+            LOG_ERROR("Failed to draw AQI info!");
+            goto l_free_redis_reply;
+        }
     }
     freeReplyObject(reply);
     reply = NULL;
@@ -2157,9 +2199,11 @@ l_start:
     if(NULL != reply->str) {
         ASYNC_REDIS_CMD(drawArea1NameCallback, NULL, "SUBSCRIBE %s", reply->str);
         EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
-        if(0 > draw_area1_name(reply2->str)) {
-            LOG_ERROR("Failed to draw area 1 name info!");
-            goto l_free_redis_reply;
+        if(reply2->str) {
+            if(0 > draw_area1_name(reply2->str)) {
+                LOG_ERROR("Failed to draw area 1 name info!");
+                goto l_free_redis_reply;
+            }
         }
         freeReplyObject(reply2);
         reply2 = NULL;
@@ -2171,9 +2215,11 @@ l_start:
     if(NULL != reply->str) {
         ASYNC_REDIS_CMD(drawArea1TempCallback, NULL, "SUBSCRIBE %s", reply->str);
         EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
-        if(0 > draw_area1_temp(reply2->str)) {
-            LOG_ERROR("Failed to draw area 1 temperature info!");
-            goto l_free_redis_reply;
+        if(reply2->str) {
+            if(0 > draw_area1_temp(reply2->str)) {
+                LOG_ERROR("Failed to draw area 1 temperature info!");
+                goto l_free_redis_reply;
+            }
         }
         freeReplyObject(reply2);
         reply2 = NULL;
@@ -2185,9 +2231,11 @@ l_start:
     if(NULL != reply->str) {
         ASYNC_REDIS_CMD(drawArea1BrightnessCallback, NULL, "SUBSCRIBE %s", reply->str);
         EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
-        if(0 > draw_area1_brightness(reply2->str)) {
-            LOG_ERROR("Failed to draw area 1 brightness info!");
-            goto l_free_redis_reply;
+        if(reply2->str) {
+            if(0 > draw_area1_brightness(reply2->str)) {
+                LOG_ERROR("Failed to draw area 1 brightness info!");
+                goto l_free_redis_reply;
+            }
         }
         freeReplyObject(reply2);
         reply2 = NULL;
@@ -2199,9 +2247,11 @@ l_start:
     if(NULL != reply->str) {
         ASYNC_REDIS_CMD(drawArea2NameCallback, NULL, "SUBSCRIBE %s", reply->str);
         EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
-        if(0 > draw_area1_name(reply2->str)) {
-            LOG_ERROR("Failed to draw area 2 name info!");
-            goto l_free_redis_reply;
+        if(reply2->str) {
+            if(0 > draw_area1_name(reply2->str)) {
+                LOG_ERROR("Failed to draw area 2 name info!");
+                goto l_free_redis_reply;
+            }
         }
         freeReplyObject(reply2);
         reply2 = NULL;
@@ -2212,9 +2262,11 @@ l_start:
     if(NULL != reply->str) {
         ASYNC_REDIS_CMD(drawArea2TempCallback, NULL, "SUBSCRIBE %s", reply->str);
         EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
-        if(0 > draw_area1_temp(reply2->str)) {
-            LOG_ERROR("Failed to draw area 2 temperature info!");
-            goto l_free_redis_reply;
+        if(reply2->str) {
+            if(0 > draw_area1_temp(reply2->str)) {
+                LOG_ERROR("Failed to draw area 2 temperature info!");
+                goto l_free_redis_reply;
+            }
         }
         freeReplyObject(reply2);
         reply2 = NULL;
@@ -2226,9 +2278,11 @@ l_start:
     if(NULL != reply->str) {
         ASYNC_REDIS_CMD(drawArea2BrightnessCallback, NULL, "SUBSCRIBE %s", reply->str);
         EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
-        if(0 > draw_area1_brightness(reply2->str)) {
-            LOG_ERROR("Failed to draw area 2 brighness info!");
-            goto l_free_redis_reply;
+        if(reply2->str) {
+            if(0 > draw_area1_brightness(reply2->str)) {
+                LOG_ERROR("Failed to draw area 2 brighness info!");
+                goto l_free_redis_reply;
+            }
         }
         freeReplyObject(reply2);
         reply2 = NULL;
@@ -2240,9 +2294,11 @@ l_start:
     if(NULL != reply->str) {
         ASYNC_REDIS_CMD(drawTargetTempCallback, NULL, "SUBSCRIBE %s", reply->str);
         EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
-        if(0 > draw_area1_brightness(reply2->str)) {
-            LOG_ERROR("Failed to draw target temperature info!");
-            goto l_free_redis_reply;
+        if(reply2->str) {
+            if(0 > draw_area1_brightness(reply2->str)) {
+                LOG_ERROR("Failed to draw target temperature info!");
+                goto l_free_redis_reply;
+            }
         }
         freeReplyObject(reply2);
         reply2 = NULL;
@@ -2254,9 +2310,11 @@ l_start:
         EXEC_REDIS_CMD(reply, l_free_async_redis, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, SWITCH_TOPIC, gs_sw_config->element[i]->str);
         ASYNC_REDIS_CMD(drawSWCallback, &sw_idx[i], "SUBSCRIBE %s", reply->str);
         EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", gs_sw_config->element[i]->str);
-        if(0 >  draw_sw(i, reply2->str)) {
-            LOG_ERROR("Failed to draw switch %d info!", i);
-            goto l_free_redis_reply;
+        if(reply2->str) {
+            if(0 >  draw_sw(i, reply2->str)) {
+                LOG_ERROR("Failed to draw switch %d info!", i);
+                goto l_free_redis_reply;
+            }
         }
         freeReplyObject(reply2);
         reply2 = NULL;
