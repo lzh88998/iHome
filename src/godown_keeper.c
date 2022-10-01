@@ -239,11 +239,14 @@ l_start:
 #endif
     // 100ms
     struct timeval timeout = { 0, 100000 }; 
-    struct event_base *base = event_base_new();
+    struct event_base *base = NULL;
 
     const char* redis_ip;
     int redis_port;
     
+    LOG_INFO("=================== Service start! ===================");
+    LOG_INFO("Parsing parameters!");
+
     if(argc >= 2) {
         if(0 == strcmp("?", argv[1])) {
             print_usage(argc, argv);
@@ -261,6 +264,7 @@ l_start:
         redis_port = REDIS_PORT;
     }
 
+    LOG_INFO("Connecting to Redis in sync mode!");
     gs_sync_context = redisConnectWithTimeout(redis_ip, redis_port, timeout);
     if(NULL == gs_sync_context) {
         LOG_ERROR("Connection error: can't allocate redis context");
@@ -280,6 +284,10 @@ l_start:
     LOG_DEBUG("PING: %s", reply->str);
     freeReplyObject(reply);
     
+    LOG_INFO("Connected to Redis in sync mode");
+    
+    LOG_INFO("Connecting to Redis in async mode!");
+    base = event_base_new();
     redisOptions options = {0};
     REDIS_OPTIONS_SET_TCP(&options, redis_ip, redis_port);
     options.connect_timeout = &timeout;
@@ -295,19 +303,52 @@ l_start:
         goto l_free_async_redis;
     }
 
+    LOG_INFO("Connected to redis in async mode");
+
     redisAsyncSetConnectCallback(gs_async_context,connectCallback);
     redisAsyncSetDisconnectCallback(gs_async_context,disconnectCallback);
 
     redisAsyncCommand(gs_async_context, subscribeCallback, NULL, "PSUBSCRIBE *");
-    event_base_dispatch(base);
     
-l_free_sync_redis:
-    redisFree(gs_sync_context);
+    LOG_INFO("Switch to Redis DB 1 to load status");
+    LOG_DETAILS("SELECT 1");
+    redisReply* tempReply = redisCommand(gs_sync_context,"SELECT 1");
+
+    if(NULL == tempReply) {
+        LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+        goto l_free_async_redis;
+    }
+
+    freeReplyObject(tempReply);
+    tempReply = NULL;
+
+    LOG_INFO("Loading log_level configuration!");
+    LOG_DETAILS("GET %s", LOG_LEVEL_FLAG_VALUE);
+    tempReply = redisCommand(gs_sync_context,"GET %s", LOG_LEVEL_FLAG_VALUE);
+
+    if(NULL == tempReply) {
+        LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+        goto l_free_async_redis;
+    }
+    
+    if(NULL != tempReply->str) {
+        if(LOG_SET_LEVEL_OK != log_set_level(tempReply->str)) {
+            LOG_WARNING("Failed to set log level %s", tempReply->str);
+        }
+    }
+
+    freeReplyObject(tempReply);
+    tempReply = NULL;
+
+    event_base_dispatch(base);
     
 l_free_async_redis:
     redisAsyncFree(gs_async_context);
     event_base_free(base);
  
+l_free_sync_redis:
+    redisFree(gs_sync_context);
+    
 l_exit:
     if(!gs_exit) {    
         LOG_ERROR("Godown_keeper execution failed retry!");

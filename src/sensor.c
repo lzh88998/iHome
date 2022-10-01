@@ -94,7 +94,6 @@ void print_usage(int argc, char **argv) {
  */
 int main (int argc, char **argv) {
     
-l_start:
 #ifndef _WIN32
     signal(SIGPIPE, SIG_IGN);
 #endif
@@ -120,6 +119,8 @@ l_start:
         topics[i] = NULL;
     }
     
+    LOG_INFO("=================== Service start! ===================");
+    LOG_INFO("Parsing parameters!");
     switch(argc) {
         case 6:
             if(0 > log_set_level(argv[3])) {
@@ -158,6 +159,8 @@ l_start:
             return -1;
     }
     
+l_start:
+    LOG_INFO("Connecting to sensor!");
     gs_socket = to_connect(serv_ip, serv_port);
     if(-1 == gs_socket) {
         LOG_ERROR("Error connecting to sensor!\n");
@@ -191,7 +194,10 @@ l_start:
     LOG_DEBUG("PING: %s\n", reply->str);
     freeReplyObject(reply);
     
-    // load config from redis
+    LOG_INFO("Connected to Redis!");
+
+    LOG_INFO("Loading config!");
+    topic_index = 0;
     while(topic_index < SENSOR_COUNT) {
         topics[topic_index] = redisCommand(gs_sync_context,"HGET %s/%s/%d %s%d", FLAG_KEY, serv_ip, serv_port, SENSOR_KEY, topic_index);
         if(NULL == topics[topic_index]) {
@@ -202,7 +208,15 @@ l_start:
         LOG_DETAILS("Topic %d: %s", topic_index, topics[topic_index]->str);
         topic_index++;
     }
-
+    
+    LOG_INFO("Switch to DB 1!");
+    reply = redisCommand(gs_sync_context,"SELECT 1");
+    if(NULL == reply) {
+        LOG_ERROR("Failed to sync query redis %s\n", gs_sync_context->errstr);
+        goto l_free_redis;
+    }
+    freeReplyObject(reply);
+    
     while(!gs_exit) {
         if(-1 == to_recv(gs_socket, &temp, 1, 0)) {
             LOG_DEBUG("Receive returned -1, %s", strerror(errno));

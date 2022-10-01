@@ -522,7 +522,7 @@ l_start:
         nodes[i] = NULL;
     }
     
-    LOG_INFO("===================Service start!===================");
+    LOG_INFO("=================== Service start! ===================");
     LOG_INFO("Parsing parameters!");
         
     redis_ip = REDIS_IP;
@@ -562,10 +562,11 @@ l_start:
             return -1;
     }
     
+    LOG_INFO("Connecting to controller!");
     gs_socket = to_connect(serv_ip, serv_port);
     if(0 > gs_socket) {
         LOG_ERROR("Error creating socket!");
-        goto l_socket_cleanup;
+        goto l_exit;
     }
   
     // Receive initial byte to activate keep alive of the remote device
@@ -577,10 +578,11 @@ l_start:
     
     LOG_INFO("Connected to controller, remote socket: %d", temp);
     
+    LOG_INFO("Connecting to Redis in sync mode!");
     sync_context = redisConnectWithTimeout(redis_ip, redis_port, timeout);
     if(NULL == sync_context) {
-        LOG_ERROR("Connection error: can't allocate redis context");
-        goto l_exit;
+        LOG_ERROR("Connection error: can't allocate sync redis context");
+        goto l_socket_cleanup;
     }
     
     if(sync_context->err) {
@@ -597,14 +599,20 @@ l_start:
     freeReplyObject(reply[0]);
     reply[0] = NULL;
 
-    LOG_INFO("Connected to redis in sync mode");
+    LOG_INFO("Connected to Redis in sync mode");
     
+    LOG_INFO("Connecting to Redis in async mode!");
     base = event_base_new();
     redisOptions options = {0};
     REDIS_OPTIONS_SET_TCP(&options, redis_ip, redis_port);
     options.connect_timeout = &timeout;
 
     gs_async_context = redisAsyncConnectWithOptions(&options);
+    if(NULL == gs_async_context) {
+        LOG_ERROR("Connection error: can't allocate async redis context");
+        goto l_free_sync_redis;
+    }
+
     if (gs_async_context->err) {
         LOG_ERROR("Error: %s", gs_async_context->errstr);
         goto l_free_async_redis;
@@ -620,28 +628,13 @@ l_start:
     redisAsyncSetConnectCallback(gs_async_context,connectCallback);
     redisAsyncSetDisconnectCallback(gs_async_context,disconnectCallback);
 
+    LOG_INFO("Subscribe exit, reset, log_level configuration changes!")
     redisAsyncCommand(gs_async_context, exitCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, EXIT_FLAG_VALUE);
     redisAsyncCommand(gs_async_context, resetCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, RESET_FLAG_VALUE);
     redisAsyncCommand(gs_async_context, setLogLevelCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
     
-    LOG_DETAILS("GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
-    reply[0] = redisCommand(sync_context,"GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
-
-    if(NULL == reply[0]) {
-        LOG_ERROR("Failed to sync query redis %s", sync_context->errstr);
-        goto l_free_async_redis;
-    }
-    
-    if(NULL != reply[0]->str) {
-        if(LOG_SET_LEVEL_OK != log_set_level(reply[0]->str)) {
-            LOG_WARNING("Failed to set log level %s", reply[0]->str);
-        }
-    }
-
-    freeReplyObject(reply[0]);
-    reply[0] = NULL;
-
     // load topics from redis hashset
+    LOG_INFO("Loading controller pin configuration!");
     for(int i = 0; i < MAX_OUTPUT_PIN_COUNT; i++ ) {
         LOG_DETAILS("HGET %s/%s %d", FLAG_KEY, serv_ip, i);
         reply[i] = redisCommand(sync_context,"HGET %s/%s %d", FLAG_KEY, serv_ip, i);
@@ -654,9 +647,11 @@ l_start:
     }
     
     // seek duplicate subscribe topics and convert to linked list
+    LOG_INFO("Process topics!");
     int topic_cnt = 0;
     for(int i = 0; i < MAX_OUTPUT_PIN_COUNT; i++) {
         int j = 0;
+        
         if(NULL == reply[i]->str)
             continue;
             
@@ -664,12 +659,14 @@ l_start:
             if(0 == strcmp(reply[i]->str, reply[nodes[j]->topic_idx]->str)) {
                 break;
             }
+            
             j++;
         }
         
         if(j < topic_cnt) { 
             // found duplicate topic
             list_node* temp = nodes[j];
+            // search for tail node
             while(temp->pNext) {
                 temp = temp->pNext;
             }
@@ -689,8 +686,39 @@ l_start:
         }
     }
     
+    // Switch to DB 1 for current status
+    LOG_INFO("Switch to Redis DB 1 to load status");
+    LOG_DETAILS("SELECT 1");
+    redisReply* tempReply = redisCommand(sync_context,"SELECT 1");
+
+    if(NULL == tempReply) {
+        LOG_ERROR("Failed to sync query redis %s", sync_context->errstr);
+        goto l_free_async_redis;
+    }
+
+    freeReplyObject(tempReply);
+    tempReply = NULL;
+
+    LOG_INFO("Loading log_level configuration!");
+    LOG_DETAILS("GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
+    tempReply = redisCommand(sync_context,"GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
+
+    if(NULL == tempReply) {
+        LOG_ERROR("Failed to sync query redis %s", sync_context->errstr);
+        goto l_free_async_redis;
+    }
+    
+    if(NULL != tempReply->str) {
+        if(LOG_SET_LEVEL_OK != log_set_level(tempReply->str)) {
+            LOG_WARNING("Failed to set log level %s", tempReply->str);
+        }
+    }
+
+    freeReplyObject(tempReply);
+    tempReply = NULL;
+
     for(int i = 0; i < topic_cnt; i++) {
-        redisReply* tempReply = redisCommand(sync_context,"GET %s", reply[nodes[i]->topic_idx]->str);
+        tempReply = redisCommand(sync_context,"GET %s", reply[nodes[i]->topic_idx]->str);
         if(NULL == tempReply) {
             LOG_ERROR("Failed to sync query redis %s", sync_context->errstr);
             goto l_free_linked_list;
@@ -708,11 +736,13 @@ l_start:
             tempNode = tempNode->pNext;
         }
         freeReplyObject(tempReply);
+        tempReply = NULL;
         
         LOG_DETAILS("SUBSCRIBE %s", reply[nodes[i]->topic_idx]->str);
         redisAsyncCommand(gs_async_context, subscribeCallback, (void*)nodes[i], "SUBSCRIBE %s", reply[nodes[i]->topic_idx]->str);
     }
 
+    LOG_INFO("Free cargador configuraiton items");
     for(int i = 0; i < MAX_OUTPUT_PIN_COUNT; i++) {
         if(reply[i]) {
             freeReplyObject(reply[i]);
@@ -720,12 +750,14 @@ l_start:
         }
     }
 
+    LOG_INFO("Free sync Redis connection");
     redisFree(sync_context);
     sync_context = NULL;
     
     event_base_dispatch(base);
     
 l_free_linked_list:
+    LOG_INFO("Free linked list!");
     for(int i = 0; i < MAX_OUTPUT_PIN_COUNT; i++) {
         while(nodes[i]) {
             list_node* temp = nodes[i];
@@ -737,6 +769,7 @@ l_free_linked_list:
 
 
 l_free_sync_redis_reply:
+    LOG_INFO("Free cargador configuraiotn items!");
     for(int i = 0; i < MAX_OUTPUT_PIN_COUNT; i++) {
         if(reply[i]) {
             freeReplyObject(reply[i]);
@@ -746,16 +779,19 @@ l_free_sync_redis_reply:
 
     
 l_free_async_redis:
+    LOG_INFO("Free async Redis connection!");
     redisAsyncFree(gs_async_context);
     event_base_free(base);
     
 l_free_sync_redis:
+    LOG_INFO("Free sync Redis connection!");
     if(NULL != sync_context) {
         redisFree(sync_context);
         sync_context = NULL;
     }
     
 l_socket_cleanup:
+    LOG_INFO("Close controller network connection!");
     to_close(gs_socket);
     gs_socket = -1;
 

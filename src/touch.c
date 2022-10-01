@@ -67,10 +67,9 @@ static char* serv_ip;
 
 static int gs_exit = 0;
 
-static char gs_sw_status[TOUCH_MAX_SW_CNT];
-static unsigned char target_temp;
 static redisReply *gs_sw_config = NULL;
-static redisReply *gs_target_temp_topic = NULL;
+static redisReply *gs_sw_topics[TOUCH_MAX_SW_CNT];
+static redisReply *gs_temp_topic = NULL;
 
 #define EXEC_REDIS_CMD(reply, goto_label, cmd, ...)		LOG_DEBUG(cmd, ##__VA_ARGS__);\
                                                         reply = redisCommand(gs_sync_context, cmd, ##__VA_ARGS__);\
@@ -129,9 +128,20 @@ void print_usage(int argc, char **argv) {
  */
 int process_click(unsigned int x, unsigned int y) {
     redisReply* reply = NULL;
+    int target_temp = 127;
     if(160 > x) {
         if(180 < y) {
             unsigned char bDirty = 0;
+            
+            EXEC_REDIS_CMD(reply, l_process_click_failed, "GET %s", gs_temp_topic->str);
+            
+            if(reply->str) {
+                target_temp = atoi(reply->str);
+            }
+            
+            freeReplyObject(reply);
+            reply = NULL;
+
             if(target_temp > 150) {
                 LOG_WARNING("Target temperature reached low limit");
                 target_temp = 150;
@@ -157,12 +167,10 @@ int process_click(unsigned int x, unsigned int y) {
             }
 
             if(bDirty) {
-                EXEC_REDIS_CMD(reply, l_process_click_failed, "PUBLISH %s %d", gs_target_temp_topic->str, target_temp);
+                EXEC_REDIS_CMD(reply, l_process_click_failed, "PUBLISH %s %d", gs_temp_topic->str, target_temp);
                 freeReplyObject(reply);
                 reply = NULL;
             }
-
-            freeReplyObject(reply);
         } else {
             // clicked on info area, do nothing
         }
@@ -252,12 +260,19 @@ int process_click(unsigned int x, unsigned int y) {
 
         if(clicked_idx >= 0){
             // get sw key
-            redisReply *reply2 = NULL;
-            EXEC_REDIS_CMD(reply, l_process_click_failed, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, SWITCH_TOPIC, gs_sw_config->element[clicked_idx]->str);
-            gs_sw_status[clicked_idx] = !gs_sw_status[clicked_idx];
-            EXEC_REDIS_CMD(reply, l_process_click_failed, "PUBLISH %s %d", reply->str, gs_sw_status[clicked_idx]);
-            freeReplyObject(reply2);
-            reply2 = NULL;
+            EXEC_REDIS_CMD(reply, l_process_click_failed, "GET %s", gs_sw_topics[clicked_idx]->str);
+            if(reply->str) {
+                int temp = 0 == strcmp ("0", reply->str);
+                freeReplyObject(reply);
+                reply = NULL;
+                
+                EXEC_REDIS_CMD(reply, l_process_click_failed, "PUBLISH %s %d", reply->str, temp);
+            } else {
+                freeReplyObject(reply);
+                reply = NULL;
+
+                EXEC_REDIS_CMD(reply, l_process_click_failed, "PUBLISH %s %d", reply->str, 0);
+            }
             freeReplyObject(reply);
             reply = NULL;
         }
@@ -311,6 +326,9 @@ l_process_click_failed:
     
     struct timeval timeout = { 0, 100000 }; 
 
+    LOG_INFO("=================== Service start! ===================");
+    LOG_INFO("Parsing parameters!");
+        
     switch(argc) {
         case 6:
             if(0 > log_set_level(argv[3])) {
@@ -349,6 +367,11 @@ l_process_click_failed:
             return -1;
     }
         
+    // initialize sw topics
+    for(int i = 0; i < TOUCH_MAX_SW_CNT; i++) {
+        gs_sw_topics[i] = NULL;
+    }
+    
 l_start:
     cur_state = 0;
     x = 0;
@@ -357,16 +380,11 @@ l_start:
     active = 0;
     inactive_cnt = 0;
     
-    LOG_DETAILS("Initializing switch status!");
-    for(int i = 0; i < TOUCH_MAX_SW_CNT; i++) {
-        gs_sw_status[i] = 0;
-    }
-
     LOG_DETAILS("Connecting to touch controller %s %d!", serv_ip, serv_port);
     gs_socket = to_connect(serv_ip, serv_port);
     if(0 > gs_socket) {
         LOG_ERROR("Error creating socket!");
-        goto l_socket_cleanup;
+        goto l_exit;
     }
     
     // Receive initial bytes to activate W5500 keep alive
@@ -402,43 +420,45 @@ l_start:
     LOG_DETAILS("Getting switch config!");
     EXEC_REDIS_CMD(gs_sw_config, l_free_redis, "HKEYS %s/%s/%s", FLAG_KEY, serv_ip, SWITCH_TOPIC);
     
-    LOG_DETAILS("Loading switch status!");
-    redisReply *reply2 = NULL;
+    // check the configured sw count is less than the max allowed count
+    if(gs_sw_config->elements > TOUCH_MAX_SW_CNT) {
+        LOG_ERROR("Error sw count overflow: %d", gs_sw_config->elements);
+        goto l_free_redis;
+    }
+    
+    LOG_DETAILS("Loading sw topics");
     for(size_t i = 0; i < gs_sw_config->elements; i++) {
-        EXEC_REDIS_CMD(reply, l_free_redis_reply, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, SWITCH_TOPIC, gs_sw_config->element[i]->str);
-        EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
-        if(reply2->str && 0 == strcmp("1", reply2->str)) {
-            gs_sw_status[i] = 1;
-        }
-        freeReplyObject(reply2);
-        reply2 = NULL;
-        freeReplyObject(reply);
-        reply = NULL;
+        EXEC_REDIS_CMD(gs_sw_topics[i], l_free_redis_reply, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, SWITCH_TOPIC, gs_sw_config->element[i]->str);
     }
     
     LOG_DETAILS("Loading target temperature!");
-    EXEC_REDIS_CMD(gs_target_temp_topic, l_free_redis_reply, "GET %s/%s/%s", FLAG_KEY, serv_ip, TARGET_TEMP_TOPIC);
+    EXEC_REDIS_CMD(gs_temp_topic, l_free_redis_reply, "GET %s/%s/%s", FLAG_KEY, serv_ip, TARGET_TEMP_TOPIC);
     
-    EXEC_REDIS_CMD(reply, l_free_redis_reply, "GET %s", gs_target_temp_topic->str);
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "GET %s", reply->str);
     
     if(reply->str) {
         int t = atoi(reply->str);
         if(t >= 150) {
-            target_temp = 150;
+            temp = 150;
         } else if(t <= 100) {
-            target_temp = 100;
+            temp = 100;
         } else {
-            target_temp = t;
+            temp = t;
         }
     } else {
-        target_temp = 127;
+        temp = 127;
     }
     
     freeReplyObject(reply);
     reply = NULL;
     
+    LOG_DETAILS("Switch to DB 1!");
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "SELECT 1");
+    freeReplyObject(reply);
+    reply = NULL;
+    
     LOG_DETAILS("Publish current target temperture!");
-    EXEC_REDIS_CMD(reply, l_free_redis_reply, "PUBLISH %s %d", gs_target_temp_topic->str, target_temp);
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "PUBLISH %s %d", gs_temp_topic->str, temp);
     freeReplyObject(reply);
     reply = NULL;
     
@@ -557,19 +577,21 @@ l_free_redis_reply:
         reply = NULL;
     }
     
-    if(reply2) {
-        freeReplyObject(reply2);
-        reply2 = NULL;
+    for(size_t i = 0; i < TOUCH_MAX_SW_CNT; i++) {
+        if(gs_sw_topics[i]) {
+            freeReplyObject(gs_sw_topics[i]);
+            gs_sw_topics[i] = NULL;
+        }
     }
-
+    
     if(gs_sw_config) {
         freeReplyObject(gs_sw_config);
         gs_sw_config = NULL;
     }
     
-    if(gs_target_temp_topic) {
-        freeReplyObject(gs_target_temp_topic);
-        gs_target_temp_topic = NULL;
+    if(gs_temp_topic) {
+        freeReplyObject(gs_temp_topic);
+        gs_temp_topic = NULL;
     }
 
 l_free_redis:
@@ -579,6 +601,7 @@ l_socket_cleanup:
     to_close(gs_socket);
     gs_socket = -1;
 
+l_exit:
     if(!gs_exit) {    
         LOG_ERROR("Monitor execution failed retry!");
         sleep(1);

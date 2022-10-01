@@ -425,9 +425,9 @@
  * Macro for query redis and log info
  */
 #define EXEC_REDIS_CMD(reply, goto_label, cmd, ...)		LOG_DEBUG(cmd, ##__VA_ARGS__);\
-                                                        reply = redisCommand(gs_sync_context, cmd, ##__VA_ARGS__);\
+                                                        reply = redisCommand(sync_context, cmd, ##__VA_ARGS__);\
                                                         if(NULL == reply) {\
-                                                            LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);\
+                                                            LOG_ERROR("Failed to sync query redis %s", sync_context->errstr);\
                                                             LOG_ERROR(cmd, ##__VA_ARGS__);\
                                                             goto goto_label;\
                                                         }
@@ -436,7 +436,7 @@
  * Macro for subscribe redis and log info
  */
 #define ASYNC_REDIS_CMD(callback, parameter, cmd, ...)  LOG_DEBUG(cmd, ##__VA_ARGS__);\
-                                                        redisAsyncCommand(gs_async_context, callback, parameter, cmd, ##__VA_ARGS__);
+                                                        redisAsyncCommand(async_context, callback, parameter, cmd, ##__VA_ARGS__);
 
 /*
  * Store last update time information
@@ -444,19 +444,18 @@
  */
 static struct timeval gs_sensor[4];
 
+#define MAX_SW_CNT                6
+
 /*
  * Char format switch index used to pass 
  * parameters to call back function
  */
-static char sw_idx[6] = {'0', '1', '2', '3', '4', '5'};
+static char sw_idx[MAX_SW_CNT] = {'0', '1', '2', '3', '4', '5'};
 
 /*
- * Context for redis connection and controller
- * network connection
+ * Context for rcontroller network connection
  */
 static to_socket_ctx gs_socket = -1;
-static redisAsyncContext *gs_async_context = NULL;
-static redisContext *gs_sync_context = NULL;
 
 /*
  * Stores config for switch items
@@ -1952,6 +1951,14 @@ int main (int argc, char **argv) {
     
     unsigned char temp;
     
+    redisAsyncContext *async_context = NULL;
+    redisContext *sync_context = NULL;
+    
+    redisReply *sw_topics[MAX_SW_CNT];
+    for(size_t i = 0; i < MAX_SW_CNT; i++) {
+        sw_topics[i] = NULL;
+    }
+
     redis_ip = REDIS_IP;
     redis_port = REDIS_PORT;
     
@@ -2005,14 +2012,15 @@ l_start:
     
     LOG_INFO("Connected to LCD controller, remote socket: %d", temp);
     
-    gs_sync_context = redisConnectWithTimeout(redis_ip, redis_port, timeout);
-    if(NULL == gs_sync_context) {
+    LOG_INFO("Connecting to Redis...");
+    sync_context = redisConnectWithTimeout(redis_ip, redis_port, timeout);
+    if(NULL == sync_context) {
         LOG_ERROR("Connection error: can't allocate redis context");
         goto l_exit;
     }
     
-    if(gs_sync_context->err) {
-        LOG_ERROR("Connection error: %s", gs_sync_context->errstr);
+    if(sync_context->err) {
+        LOG_ERROR("Connection error: %s", sync_context->errstr);
         goto l_free_sync_redis;
     }
     
@@ -2023,17 +2031,19 @@ l_start:
     freeReplyObject(reply);
     reply = NULL;
 
-    LOG_INFO("Connected to redis in sync mode!");
+    LOG_INFO("Connected to Redis in sync mode!");
     
-    // update log level to config in redis
-    EXEC_REDIS_CMD(reply, l_free_async_redis, "GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
-    if(NULL != reply->str) {
-        if(LOG_SET_LEVEL_OK != log_set_level(reply->str)) {
-            LOG_WARNING("Failed to set log level %s", reply->str);
-        }
+    // Check enabled switch count
+    LOG_INFO("Load switch config from redis!");
+    EXEC_REDIS_CMD(gs_sw_config, l_free_sync_redis, "HKEYS %s/%s/%s", FLAG_KEY, serv_ip, SWITCH_TOPIC);
+    if(gs_sw_config->elements > MAX_SW_CNT) {
+        LOG_ERROR("Error configured sw count is greater than allowed! %d", gs_sw_config->elements);
+        goto l_free_sync_redis;
     }
-    freeReplyObject(reply);
-    reply = NULL;
+    
+    for(size_t i = 0; i < gs_sw_config->elements; i++) {
+        EXEC_REDIS_CMD(sw_topics[i], l_free_sync_redis, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, SWITCH_TOPIC, gs_sw_config->element[i]->str);
+    }
     
     // Connect to redis in async mode
     redisOptions options = {0};
@@ -2043,34 +2053,46 @@ l_start:
     options.connect_timeout = &tv;
 
     LOG_INFO("Connected to redis in async mode!");
-    gs_async_context = redisAsyncConnectWithOptions(&options);
-    if(NULL == gs_async_context) {
+    async_context = redisAsyncConnectWithOptions(&options);
+    if(NULL == async_context) {
         LOG_ERROR("Error cannot allocate gs_async_context!");
-        goto l_socket_cleanup;
+        goto l_free_sync_redis;
     }
     
-    if (gs_async_context->err) {
-        LOG_ERROR("Error async connect: %s", gs_async_context->errstr);
+    if (async_context->err) {
+        LOG_ERROR("Error async connect: %s", async_context->errstr);
         goto l_free_async_redis;
     }
 
     // prepare async calls
     base = event_base_new();
-    if(REDIS_OK != redisLibeventAttach(gs_async_context,base)) {
+    if(REDIS_OK != redisLibeventAttach(async_context,base)) {
         LOG_ERROR("Error: error redis libevent attach!");
         goto l_free_async_redis;
     }
 
     LOG_INFO("Set async redis callbacks!");
-    redisAsyncSetConnectCallback(gs_async_context,connectCallback);
-    redisAsyncSetDisconnectCallback(gs_async_context,disconnectCallback);
+    redisAsyncSetConnectCallback(async_context,connectCallback);
+    redisAsyncSetDisconnectCallback(async_context,disconnectCallback);
+    
+    LOG_INFO("Switch to DB 1!");
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "SELECT 1");
+    freeReplyObject(reply);
+    reply = NULL;
     
     // Subscribe changes for log_level, exit, reset
-    LOG_INFO("Subscribe exit, reset, log_level events!");
+    LOG_INFO("Subscribe exit, reset, log_level, time events!");
     ASYNC_REDIS_CMD(exitCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, EXIT_FLAG_VALUE);
     ASYNC_REDIS_CMD(resetCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, RESET_FLAG_VALUE);
     ASYNC_REDIS_CMD(setLogLevelCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
     ASYNC_REDIS_CMD(setBrightnessCallback, NULL, "SUBSCRIBE %s/%s/%s", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC);
+
+    ASYNC_REDIS_CMD(drawTimeCallback, NULL, "SUBSCRIBE time");
+    ASYNC_REDIS_CMD(drawWeatherCallback, NULL, "SUBSCRIBE weather/forcast");
+    ASYNC_REDIS_CMD(drawTempCallback, NULL, "SUBSCRIBE weather/temperature");
+    ASYNC_REDIS_CMD(drawHumidityCallback, NULL, "SUBSCRIBE weather/humidity");
+    ASYNC_REDIS_CMD(drawWindCallback, NULL, "SUBSCRIBE weather/wind");
+    ASYNC_REDIS_CMD(drawAqiCallback, NULL, "SUBSCRIBE weather/aqi");
 
     // initialize last update time for sensor values
     LOG_INFO("Reset sensor data timer!");
@@ -2123,19 +2145,23 @@ l_start:
         goto l_free_async_redis;
     }
     
-    // Check enabled switch count
-    LOG_INFO("Load switch config from redis!");
-    EXEC_REDIS_CMD(gs_sw_config, l_free_async_redis, "HKEYS %s/%s/%s", FLAG_KEY, serv_ip, SWITCH_TOPIC);
-    
     // Draw switch area
     if(0 > draw_sw_lines()) {
         LOG_ERROR("Failed to draw switch area lines!");
         goto l_free_sw_config;
     }
     
-    ASYNC_REDIS_CMD(drawTimeCallback, NULL, "SUBSCRIBE time");
-
-    EXEC_REDIS_CMD(reply, l_free_sw_config, "GET weather/forcast");
+    // update log level to config in redis
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "GET %s/%s/%s", FLAG_KEY, serv_ip, LOG_LEVEL_FLAG_VALUE);
+    if(NULL != reply->str) {
+        if(LOG_SET_LEVEL_OK != log_set_level(reply->str)) {
+            LOG_WARNING("Failed to set log level %s", reply->str);
+        }
+    }
+    freeReplyObject(reply);
+    reply = NULL;
+    
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "GET weather/forcast");
     if(reply->str) {
         if(0 > draw_weather(reply->str)) {
             LOG_ERROR("Failed to draw weather info!");
@@ -2145,9 +2171,7 @@ l_start:
     freeReplyObject(reply);
     reply = NULL;
 
-    ASYNC_REDIS_CMD(drawWeatherCallback, NULL, "SUBSCRIBE weather/forcast");
-
-    EXEC_REDIS_CMD(reply, l_free_sw_config, "GET weather/temperature");
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "GET weather/temperature");
     if(reply->str) {
         if(0 > draw_temp(reply->str)) {
             LOG_ERROR("Failed to draw temperature info!");
@@ -2157,9 +2181,7 @@ l_start:
     freeReplyObject(reply);
     reply = NULL;
 
-    ASYNC_REDIS_CMD(drawTempCallback, NULL, "SUBSCRIBE weather/temperature");
-
-    EXEC_REDIS_CMD(reply, l_free_sw_config, "GET weather/humidity");
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "GET weather/humidity");
     if(reply->str) {
         if(0 > draw_humidity(reply->str)) {
             LOG_ERROR("Failed to draw humidity info!");
@@ -2169,9 +2191,7 @@ l_start:
     freeReplyObject(reply);
     reply = NULL;
 
-    ASYNC_REDIS_CMD(drawHumidityCallback, NULL, "SUBSCRIBE weather/humidity");
-
-    EXEC_REDIS_CMD(reply, l_free_sw_config, "GET weather/wind");
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "GET weather/wind");
     if(reply->str) {
         if(0 > draw_wind(reply->str)) {
             LOG_ERROR("Failed to draw wind info!");
@@ -2181,9 +2201,7 @@ l_start:
     freeReplyObject(reply);
     reply = NULL;
 
-    ASYNC_REDIS_CMD(drawWindCallback, NULL, "SUBSCRIBE weather/wind");
-
-    EXEC_REDIS_CMD(reply, l_free_sw_config, "GET weather/aqi");
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "GET weather/aqi");
     if(reply->str) {
         if(0 > draw_aqi(reply->str)) {
             LOG_ERROR("Failed to draw AQI info!");
@@ -2193,9 +2211,10 @@ l_start:
     freeReplyObject(reply);
     reply = NULL;
     
-    ASYNC_REDIS_CMD(drawAqiCallback, NULL, "SUBSCRIBE weather/aqi");
-
-    EXEC_REDIS_CMD(reply, l_free_sw_config, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, AREA1_TOPIC, NAME_TOPIC);
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "SELECT 0");
+    freeReplyObject(reply);
+    reply = NULL;
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, AREA1_TOPIC, NAME_TOPIC);
     if(NULL != reply->str) {
         ASYNC_REDIS_CMD(drawArea1NameCallback, NULL, "SUBSCRIBE %s", reply->str);
         EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
@@ -2211,7 +2230,13 @@ l_start:
     freeReplyObject(reply);
     reply = NULL;
     
-    EXEC_REDIS_CMD(reply, l_free_sw_config, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, AREA1_TOPIC, TEMP_TOPIC);
+    EXEC_REDIS_CMD(reply2, l_free_redis_reply, "SELECT 0");
+    freeReplyObject(reply2);
+    reply2 = NULL;
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, AREA1_TOPIC, TEMP_TOPIC);
+    EXEC_REDIS_CMD(reply2, l_free_redis_reply, "SELECT 1");
+    freeReplyObject(reply2);
+    reply2 = NULL;
     if(NULL != reply->str) {
         ASYNC_REDIS_CMD(drawArea1TempCallback, NULL, "SUBSCRIBE %s", reply->str);
         EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
@@ -2227,7 +2252,13 @@ l_start:
     freeReplyObject(reply);
     reply = NULL;
     
-    EXEC_REDIS_CMD(reply, l_free_sw_config, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, AREA1_TOPIC, BRIGHTNESS_TOPIC);
+    EXEC_REDIS_CMD(reply2, l_free_redis_reply, "SELECT 0");
+    freeReplyObject(reply2);
+    reply2 = NULL;
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, AREA1_TOPIC, BRIGHTNESS_TOPIC);
+    EXEC_REDIS_CMD(reply2, l_free_redis_reply, "SELECT 1");
+    freeReplyObject(reply2);
+    reply2 = NULL;
     if(NULL != reply->str) {
         ASYNC_REDIS_CMD(drawArea1BrightnessCallback, NULL, "SUBSCRIBE %s", reply->str);
         EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
@@ -2243,7 +2274,13 @@ l_start:
     freeReplyObject(reply);
     reply = NULL;
     
-    EXEC_REDIS_CMD(reply, l_free_sw_config, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, AREA2_TOPIC, NAME_TOPIC);
+    EXEC_REDIS_CMD(reply2, l_free_redis_reply, "SELECT 0");
+    freeReplyObject(reply2);
+    reply2 = NULL;
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, AREA2_TOPIC, NAME_TOPIC);
+    EXEC_REDIS_CMD(reply2, l_free_redis_reply, "SELECT 1");
+    freeReplyObject(reply2);
+    reply2 = NULL;
     if(NULL != reply->str) {
         ASYNC_REDIS_CMD(drawArea2NameCallback, NULL, "SUBSCRIBE %s", reply->str);
         EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
@@ -2258,7 +2295,14 @@ l_start:
     }
     freeReplyObject(reply);
     reply = NULL;
-    EXEC_REDIS_CMD(reply, l_free_sw_config, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, AREA2_TOPIC, TEMP_TOPIC);
+
+    EXEC_REDIS_CMD(reply2, l_free_redis_reply, "SELECT 0");
+    freeReplyObject(reply2);
+    reply2 = NULL;
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, AREA2_TOPIC, TEMP_TOPIC);
+    EXEC_REDIS_CMD(reply2, l_free_redis_reply, "SELECT 1");
+    freeReplyObject(reply2);
+    reply2 = NULL;
     if(NULL != reply->str) {
         ASYNC_REDIS_CMD(drawArea2TempCallback, NULL, "SUBSCRIBE %s", reply->str);
         EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
@@ -2274,7 +2318,13 @@ l_start:
     freeReplyObject(reply);
     reply = NULL;
     
-    EXEC_REDIS_CMD(reply, l_free_sw_config, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, AREA2_TOPIC, BRIGHTNESS_TOPIC);
+    EXEC_REDIS_CMD(reply2, l_free_redis_reply, "SELECT 0");
+    freeReplyObject(reply2);
+    reply2 = NULL;
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, AREA2_TOPIC, BRIGHTNESS_TOPIC);
+    EXEC_REDIS_CMD(reply2, l_free_redis_reply, "SELECT 1");
+    freeReplyObject(reply2);
+    reply2 = NULL;
     if(NULL != reply->str) {
         ASYNC_REDIS_CMD(drawArea2BrightnessCallback, NULL, "SUBSCRIBE %s", reply->str);
         EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
@@ -2290,7 +2340,13 @@ l_start:
     freeReplyObject(reply);
     reply = NULL;
 
-    EXEC_REDIS_CMD(reply, l_free_async_redis, "GET %s/%s/%s", FLAG_KEY, serv_ip, TARGET_TEMP_TOPIC);
+    EXEC_REDIS_CMD(reply2, l_free_redis_reply, "SELECT 0");
+    freeReplyObject(reply2);
+    reply2 = NULL;
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "GET %s/%s/%s", FLAG_KEY, serv_ip, TARGET_TEMP_TOPIC);
+    EXEC_REDIS_CMD(reply2, l_free_redis_reply, "SELECT 1");
+    freeReplyObject(reply2);
+    reply2 = NULL;
     if(NULL != reply->str) {
         ASYNC_REDIS_CMD(drawTargetTempCallback, NULL, "SUBSCRIBE %s", reply->str);
         EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
@@ -2307,17 +2363,14 @@ l_start:
     reply = NULL;
     
     for(size_t i = 0; i < gs_sw_config->elements; i++) {
-        EXEC_REDIS_CMD(reply, l_free_async_redis, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, SWITCH_TOPIC, gs_sw_config->element[i]->str);
-        ASYNC_REDIS_CMD(drawSWCallback, &sw_idx[i], "SUBSCRIBE %s", reply->str);
-        EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", gs_sw_config->element[i]->str);
-        if(reply2->str) {
-            if(0 >  draw_sw(i, reply2->str)) {
+        ASYNC_REDIS_CMD(drawSWCallback, &sw_idx[i], "SUBSCRIBE %s", sw_topics[i]->str);
+        EXEC_REDIS_CMD(reply, l_free_redis_reply, "GET %s", gs_sw_config->element[i]->str);
+        if(reply->str) {
+            if(0 >  draw_sw(i, reply->str)) {
                 LOG_ERROR("Failed to draw switch %d info!", i);
                 goto l_free_redis_reply;
             }
         }
-        freeReplyObject(reply2);
-        reply2 = NULL;
         freeReplyObject(reply);
         reply = NULL;
 
@@ -2332,21 +2385,35 @@ l_free_redis_reply:
 
     if(NULL != reply)
         freeReplyObject(reply);
+        
+    for(size_t i = 0; i < MAX_SW_CNT; i++) {
+        if(sw_topics[i]) {
+            freeReplyObject(sw_topics[i]);
+            sw_topics[i] = NULL;
+        }
+    }
 
 l_free_sw_config:
-    freeReplyObject(gs_sw_config);
-    gs_sw_config = NULL;
+    if(NULL != gs_sw_config) {
+        freeReplyObject(gs_sw_config);
+        gs_sw_config = NULL;
+    }
         
 l_free_async_redis:
-    redisAsyncFree(gs_async_context);
-    event_base_free(base);
-    base = NULL;
+    if(NULL != async_context) {
+        redisAsyncFree(async_context);
+        async_context = NULL;
+    }
+    if(NULL != base) {
+        event_base_free(base);
+        base = NULL;
+    }
     LOG_INFO("exit!");
     
 l_free_sync_redis:
-    if(NULL != gs_sync_context) {
-        redisFree(gs_sync_context);
-        gs_sync_context = NULL;
+    if(NULL != sync_context) {
+        redisFree(sync_context);
+        sync_context = NULL;
     }
     
 l_socket_cleanup:

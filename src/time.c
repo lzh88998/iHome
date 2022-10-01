@@ -108,6 +108,9 @@ int main (int argc, char **argv) {
     int last_h = -1;
     int last_m = -1;
     
+    LOG_INFO("=================== Service start! ===================");
+    LOG_INFO("Parsing parameters!");
+
     if(argc >= 2) {
         if(0 == strcmp("?", argv[1])) {
             print_usage(argc, argv);
@@ -126,8 +129,6 @@ int main (int argc, char **argv) {
     }
 
 l_start:
-    LOG_INFO("============================ Time Start ============================");
-
     LOG_DEBUG("Connect to Redis!");
     gs_sync_context = redisConnectWithTimeout(redis_ip, redis_port, timeout);
     if(NULL == gs_sync_context) {
@@ -149,6 +150,14 @@ l_start:
     LOG_DEBUG("PING: %s", reply->str);
     freeReplyObject(reply);
     
+    LOG_DEBUG("Switch to DB1!");
+    reply = redisCommand(gs_sync_context,"SELECT 1");
+    if(NULL == reply) {
+        LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+        goto l_free_sync_redis;
+    }
+    freeReplyObject(reply);
+
     LOG_DEBUG("Start main loop!");
     while(!gs_exit) {
         // publish time
