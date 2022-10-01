@@ -73,7 +73,7 @@
  * when last update happens greater than 
  * this interval value
  */
-#define SENSOR_VALUE_INTERVAL_MS    3000
+#define SENSOR_VALUE_INTERVAL       3
 
 /*
  * Identifier used in redis keys for this
@@ -1175,6 +1175,7 @@ int draw_area1_temp(const char* temp) {
  */
 void drawArea1TempCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
+    struct timeval t;
     
     UNUSED(privdata);
     
@@ -1186,9 +1187,13 @@ void drawArea1TempCallback(redisAsyncContext *c, void *r, void *privdata) {
     }
     
     if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        if(0 > draw_area1_temp(reply->element[2]->str)) {
-            LOG_ERROR("Draw area 1 temperature failed!");
-            redisAsyncDisconnect(c);
+        gettimeofday(&t, NULL);
+        if(t.tv_sec - gs_sensor[0].tv_sec > SENSOR_VALUE_INTERVAL) {
+            gettimeofday(&gs_sensor[0], NULL);
+            if(0 > draw_area1_temp(reply->element[2]->str)) {
+                LOG_ERROR("Draw area 1 temperature failed!");
+                redisAsyncDisconnect(c);
+            }
         }
     }
     
@@ -1229,6 +1234,7 @@ int draw_area1_brightness(const char* brightness) {
  */
 void drawArea1BrightnessCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
+    struct timeval t;
     
     UNUSED(privdata);
     
@@ -1240,9 +1246,13 @@ void drawArea1BrightnessCallback(redisAsyncContext *c, void *r, void *privdata) 
     }
     
     if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        if(0 > draw_area1_brightness(reply->element[2]->str)) {
-            LOG_ERROR("Draw area 1 brightness failed!");
-            redisAsyncDisconnect(c);
+        gettimeofday(&t, NULL);
+        if(t.tv_sec - gs_sensor[1].tv_sec > SENSOR_VALUE_INTERVAL) {
+            gettimeofday(&gs_sensor[1], NULL);
+            if(0 > draw_area1_brightness(reply->element[2]->str)) {
+                LOG_ERROR("Draw area 1 brightness failed!");
+                redisAsyncDisconnect(c);
+            }
         }
     }
     
@@ -1333,6 +1343,7 @@ int draw_area2_temp(const char* temp) {
  */
 void drawArea2TempCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
+    struct timeval t;
     
     UNUSED(privdata);
     
@@ -1344,9 +1355,13 @@ void drawArea2TempCallback(redisAsyncContext *c, void *r, void *privdata) {
     }
     
     if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        if(0 > draw_area2_temp(reply->element[2]->str)) {
-            LOG_ERROR("Draw area 2 temperature failed!");
-            redisAsyncDisconnect(c);
+        gettimeofday(&t, NULL);
+        if(t.tv_sec - gs_sensor[2].tv_sec > SENSOR_VALUE_INTERVAL) {
+            gettimeofday(&gs_sensor[2], NULL);
+            if(0 > draw_area2_temp(reply->element[2]->str)) {
+                LOG_ERROR("Draw area 2 temperature failed!");
+                redisAsyncDisconnect(c);
+            }
         }
     }
     
@@ -1387,6 +1402,7 @@ int draw_area2_brightness(const char* brightness) {
  */
 void drawArea2BrightnessCallback(redisAsyncContext *c, void *r, void *privdata) {
     redisReply *reply = r;
+    struct timeval t;
     
     UNUSED(privdata);
     
@@ -1398,9 +1414,13 @@ void drawArea2BrightnessCallback(redisAsyncContext *c, void *r, void *privdata) 
     }
     
     if(3 == reply->elements && reply->element[2] && reply->element[2]->str) {
-        if(0 > draw_area2_brightness(reply->element[2]->str)) {
-            LOG_ERROR("Draw area 2 brightness failed!");
-            redisAsyncDisconnect(c);
+        gettimeofday(&t, NULL);
+        if(t.tv_sec - gs_sensor[3].tv_sec > SENSOR_VALUE_INTERVAL) {
+            gettimeofday(&gs_sensor[3], NULL);
+            if(0 > draw_area2_brightness(reply->element[2]->str)) {
+                LOG_ERROR("Draw area 2 brightness failed!");
+                redisAsyncDisconnect(c);
+            }
         }
     }
     
