@@ -43,7 +43,7 @@
 #define EXIT_FLAG_VALUE         "exit"
 #define LOG_LEVEL_FLAG_KEY      "log_level"
 #define BRIGHTNESS_TOPIC        "brightness"
-#define SWITCH_TOPIC            "switch"
+#define SWITCH_TOPIC            "sw"
 #define TARGET_TEMP_TOPIC       "target_temp"
 
 #define RECEIVE_STATE_CMD       0
@@ -262,16 +262,16 @@ int process_click(unsigned int x, unsigned int y) {
             // get sw key
             EXEC_REDIS_CMD(reply, l_process_click_failed, "GET %s", gs_sw_topics[clicked_idx]->str);
             if(reply->str) {
-                int temp = 0 == strcmp ("0", reply->str);
+                int temp = (0 == strcmp ("0", reply->str));
                 freeReplyObject(reply);
                 reply = NULL;
                 
-                EXEC_REDIS_CMD(reply, l_process_click_failed, "PUBLISH %s %d", reply->str, temp);
+                EXEC_REDIS_CMD(reply, l_process_click_failed, "PUBLISH %s %d", gs_sw_topics[clicked_idx]->str, temp);
             } else {
                 freeReplyObject(reply);
                 reply = NULL;
 
-                EXEC_REDIS_CMD(reply, l_process_click_failed, "PUBLISH %s %d", reply->str, 0);
+                EXEC_REDIS_CMD(reply, l_process_click_failed, "PUBLISH %s %d", gs_sw_topics[clicked_idx]->str, 0);
             }
             freeReplyObject(reply);
             reply = NULL;
@@ -434,7 +434,7 @@ l_start:
     LOG_DETAILS("Loading target temperature!");
     EXEC_REDIS_CMD(gs_temp_topic, l_free_redis_reply, "GET %s/%s/%s", FLAG_KEY, serv_ip, TARGET_TEMP_TOPIC);
     
-    EXEC_REDIS_CMD(reply, l_free_redis_reply, "GET %s", reply->str);
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "GET %s", gs_temp_topic->str);
     
     if(reply->str) {
         int t = atoi(reply->str);

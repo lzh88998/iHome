@@ -28,7 +28,7 @@
 #define REDIS_PORT              6379
 
 #define FLAG_KEY                "sensor"
-#define SENSOR_KEY              "sensor_"
+#define SENSOR_KEY              ""
 
 #define SENSOR_COUNT            4
 

@@ -84,8 +84,7 @@
 /*
  * Configuration items in redis hash
  */
-#define SWITCH_TOPIC                "switch"
-#define SENSOR_TOPIC                "sensor"
+#define SWITCH_TOPIC                "sw"
 #define BRIGHTNESS_TOPIC            "brightness"
 #define AREA1_TOPIC                 "area1"
 #define AREA2_TOPIC                 "area2"
@@ -2236,16 +2235,10 @@ l_start:
     reply = NULL;
     EXEC_REDIS_CMD(reply, l_free_redis_reply, "HGET %s/%s/%s %s", FLAG_KEY, serv_ip, AREA1_TOPIC, NAME_TOPIC);
     if(NULL != reply->str) {
-        ASYNC_REDIS_CMD(drawArea1NameCallback, NULL, "SUBSCRIBE %s", reply->str);
-        EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
-        if(reply2->str) {
-            if(0 > draw_area1_name(reply2->str)) {
-                LOG_ERROR("Failed to draw area 1 name info!");
-                goto l_free_redis_reply;
-            }
+        if(0 > draw_area1_name(reply->str)) {
+            LOG_ERROR("Failed to draw area 1 name info!");
+            goto l_free_redis_reply;
         }
-        freeReplyObject(reply2);
-        reply2 = NULL;
     }
     freeReplyObject(reply);
     reply = NULL;
@@ -2302,16 +2295,10 @@ l_start:
     freeReplyObject(reply2);
     reply2 = NULL;
     if(NULL != reply->str) {
-        ASYNC_REDIS_CMD(drawArea2NameCallback, NULL, "SUBSCRIBE %s", reply->str);
-        EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
-        if(reply2->str) {
-            if(0 > draw_area1_name(reply2->str)) {
-                LOG_ERROR("Failed to draw area 2 name info!");
-                goto l_free_redis_reply;
-            }
+        if(0 > draw_area2_name(reply->str)) {
+            LOG_ERROR("Failed to draw area 2 name info!");
+            goto l_free_redis_reply;
         }
-        freeReplyObject(reply2);
-        reply2 = NULL;
     }
     freeReplyObject(reply);
     reply = NULL;
@@ -2327,7 +2314,7 @@ l_start:
         ASYNC_REDIS_CMD(drawArea2TempCallback, NULL, "SUBSCRIBE %s", reply->str);
         EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
         if(reply2->str) {
-            if(0 > draw_area1_temp(reply2->str)) {
+            if(0 > draw_area2_temp(reply2->str)) {
                 LOG_ERROR("Failed to draw area 2 temperature info!");
                 goto l_free_redis_reply;
             }
@@ -2349,7 +2336,7 @@ l_start:
         ASYNC_REDIS_CMD(drawArea2BrightnessCallback, NULL, "SUBSCRIBE %s", reply->str);
         EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
         if(reply2->str) {
-            if(0 > draw_area1_brightness(reply2->str)) {
+            if(0 > draw_area2_brightness(reply2->str)) {
                 LOG_ERROR("Failed to draw area 2 brighness info!");
                 goto l_free_redis_reply;
             }
@@ -2371,7 +2358,7 @@ l_start:
         ASYNC_REDIS_CMD(drawTargetTempCallback, NULL, "SUBSCRIBE %s", reply->str);
         EXEC_REDIS_CMD(reply2, l_free_redis_reply, "GET %s", reply->str);
         if(reply2->str) {
-            if(0 > draw_area1_brightness(reply2->str)) {
+            if(0 > draw_target_temp(reply2->str)) {
                 LOG_ERROR("Failed to draw target temperature info!");
                 goto l_free_redis_reply;
             }
@@ -2382,14 +2369,13 @@ l_start:
     freeReplyObject(reply);
     reply = NULL;
     
+    LOG_DETAILS("Draw initial sw status!");
     for(size_t i = 0; i < gs_sw_config->elements; i++) {
         ASYNC_REDIS_CMD(drawSWCallback, &sw_idx[i], "SUBSCRIBE %s", sw_topics[i]->str);
-        EXEC_REDIS_CMD(reply, l_free_redis_reply, "GET %s", gs_sw_config->element[i]->str);
-        if(reply->str) {
-            if(0 >  draw_sw(i, reply->str)) {
-                LOG_ERROR("Failed to draw switch %d info!", i);
-                goto l_free_redis_reply;
-            }
+        EXEC_REDIS_CMD(reply, l_free_redis_reply, "GET %s", sw_topics[i]->str);
+        if(0 > draw_sw(i, reply->str)) {
+            LOG_ERROR("Failed to draw switch %d info!", i);
+            goto l_free_redis_reply;
         }
         freeReplyObject(reply);
         reply = NULL;
