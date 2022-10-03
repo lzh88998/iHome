@@ -9,3 +9,8 @@ To use this in production, user need to modify the TCP keep alive configuration 
 
 *net.ipv4.tcp_keepalive_probes=1*
 
+Also depending on different distribution of Linux, it might need to config the following item to avoid FIN_WAIT1 when killing processes
+
+*net.ipv4.tcp_max_orphans=0*
+
+*net.ipv4.tcp_orphans_retries=1*
