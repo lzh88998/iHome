@@ -1754,6 +1754,11 @@ int draw_sw_lines(void) {
             // draw line in the middle of area
             return draw_line(SWITCH_X_START, SWITCH_Y_HALF, SWITCH_X_END, SWITCH_Y_HALF, FG_COLOR);
         case 3:
+            ret = draw_line(SWITCH_X_START, SWITCH_Y_ONE_THIRD, SWITCH_X_END, SWITCH_Y_ONE_THIRD, FG_COLOR);
+            if(0 > ret)
+                return ret;
+            
+            return draw_line(SWITCH_X_START, SWITCH_Y_TWO_THIRD, SWITCH_X_END, SWITCH_Y_TWO_THIRD, FG_COLOR);
         case 4:
             ret = draw_line(SWITCH_X_START, SWITCH_Y_HALF, SWITCH_X_END, SWITCH_Y_HALF, FG_COLOR);
             if(0 > ret)
@@ -1816,13 +1821,13 @@ int draw_sw(unsigned char idx, char* value) {
         case 3:
             switch(idx) {
                 case 0:
-                    DRAW_SW(SWITCH_X_START, SWITCH_Y_START, SWITCH_X_HALF, SWITCH_Y_HALF);
+                    DRAW_SW(SWITCH_X_START, SWITCH_Y_START, SWITCH_X_END, SWITCH_Y_ONE_THIRD);
                     break;
                 case 1:
-                    DRAW_SW(SWITCH_X_HALF, SWITCH_Y_START, SWITCH_X_END, SWITCH_Y_HALF);
+                    DRAW_SW(SWITCH_X_START, SWITCH_Y_ONE_THIRD, SWITCH_X_END, SWITCH_Y_TWO_THIRD);
                     break;
                 case 2:
-                    DRAW_SW(SWITCH_X_START, SWITCH_Y_HALF, SWITCH_X_HALF, SWITCH_Y_END);
+                    DRAW_SW(SWITCH_X_START, SWITCH_Y_TWO_THIRD, SWITCH_X_END, SWITCH_Y_END);
                     break;
                 default:
                     break;
