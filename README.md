@@ -14,3 +14,13 @@ Also depending on different distribution of Linux, it might need to config the f
 *net.ipv4.tcp_max_orphans=0*
 
 *net.ipv4.tcp_orphans_retries=1*
+
+TODO:
+
+May need to add copy service scripts to /usr/lib/systemd/system/.
+
+May need to add services?
+
+May need to add crontab script
+
+**/30 * * * * /src/iHome/script/weather_forcast.sh*

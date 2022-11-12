@@ -1,4 +1,4 @@
-TARGET=cargador godown_keeper touch sensor lcd time
+TARGET=cargador godown_keeper touch sensor lcd time central_heating
 OBJ=log.o to_socket.o 
 
 STLIB_MAKE_CMD=$(AR) rcs
@@ -55,6 +55,9 @@ sensor:src/sensor.c $(HIREDIS_LIB) $(COMMON_LIB)
 	
 lcd:src/lcd.c $(HIREDIS_LIB) $(COMMON_LIB)
 	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS) -lm
+
+central_heating:src/central_heating.c $(HIREDIS_LIB) $(COMMON_LIB)
+	$(CC) -o $@ $(HIREDIS_LIB) $(REAL_CFLAGS) -I$(HIREDIS_INCLUDE) $< -levent $(REAL_LDFLAGS)
 
 clean:
 	rm -rf *.o *.a $(TARGET)
