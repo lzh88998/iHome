@@ -671,17 +671,19 @@ l_start:
         goto l_exit;
     }
     
+    LOG_INFO("Connect return!");
     if(gs_sync_context->err) {
         LOG_ERROR("Connection error: %s", gs_sync_context->errstr);
         goto l_free_sync_redis;
     }
 
+    LOG_INFO("Check sync connection!");
     redisReply* reply = redisCommand(gs_sync_context,"PING");
     if(NULL == reply) {
         LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
         goto l_free_sync_redis;
     }
-    LOG_DEBUG("PING: %s", reply->str);
+    LOG_INFO("PING: %s", reply->str);
     freeReplyObject(reply);
     
     LOG_INFO("Connected to Redis in sync mode");
