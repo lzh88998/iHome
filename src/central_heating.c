@@ -294,7 +294,25 @@ void curTempChangeCallback(redisAsyncContext *c, void *r, void *privdata) {
                     freeReplyObject(reply);
                     node->last_status = 1;
                 }
+            } else {
+                // heating water termperature is not high enough
+                if(node->last_status) {
+                    // publish 0 to disable heating
+                    LOG_INFO("Publish 0 to disable heating");
+                    LOG_DETAILS("PUBLISH %s 0", node->sw_topic->str);
+                    reply = redisCommand(gs_sync_context,"PUBLISH %s 0", node->sw_topic->str);
+
+                    if(NULL == reply) {
+                        LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
+                        redisAsyncDisconnect(c);
+                        return;
+                    }
+
+                    freeReplyObject(reply);
+                    node->last_status = 0;
+                }
             }
+            gettimeofday(&node->last_check, NULL);
         }
     } else if(node->cur_temp < node->target_temp && temp < node->target_temp) {
         // too hot
@@ -318,6 +336,7 @@ void curTempChangeCallback(redisAsyncContext *c, void *r, void *privdata) {
 
                 freeReplyObject(reply);
                 node->last_status = 0;
+                gettimeofday(&node->last_check, NULL);
             }
         }
     } else {
