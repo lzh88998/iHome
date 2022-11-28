@@ -1,0 +1,12 @@
+[Unit]
+Description=Godown keeper is used to save event received in redis pub/sub to redis key value pairs
+After=redis
+
+[Service]
+Type=simple
+PIDFile=/var/run/central_heating.pid
+ExecStart=/usr/local/bin/central_heating
+ExecStop=/usr/bin/redis-cli publish central_heating/exit exit
+
+[Install]
+WantedBy=multi-user.target
