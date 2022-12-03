@@ -32,7 +32,7 @@
 
 #define EXIT_FLAG_KEY           "exit"
 #define EXIT_FLAG_VALUE         "exit"
-#define LOG_LEVEL_FLAG_KEY      "central_heating/log_level"
+#define LOG_LEVEL_FLAG_KEY      "log_level"
 
 #define FLAG_KEY                "central_heating"
 
@@ -52,9 +52,9 @@ static redisAsyncContext *gs_async_context = NULL;
 
 static int gs_exit = 0;
 
-int gs_room_temp = 127;
-int gs_water_temp = 127;
-int gs_threshold = 20;
+static int gs_room_temp = 127;
+static int gs_water_temp = 127;
+static int gs_threshold = 20;
 
 /*
  * Use this linked list format to describe PINs that depends on 
@@ -169,7 +169,8 @@ void roomTempChangeCallback(redisAsyncContext *c, void *r, void *privdata) {
     
     gs_room_temp = atoi(reply->element[2]->str);
     
-    LOG_DEBUG("Subscribe finished!");}
+    LOG_DEBUG("Subscribe finished!");
+}
 
 void waterTempChangeCallback(redisAsyncContext *c, void *r, void *privdata) {
     UNUSED(privdata);
@@ -625,7 +626,6 @@ void print_usage(int argc, char **argv) {
  */
 int main (int argc, char **argv) {
     
-l_start:
 #ifndef _WIN32
     signal(SIGPIPE, SIG_IGN);
 #endif
@@ -638,8 +638,6 @@ l_start:
 
     redisReply* temp_postfix_reply = NULL;
     redisReply* target_postfix_reply = NULL;
-    redisReply* room_temp_reply = NULL;
-    redisReply* water_temp_reply = NULL;
     
     redisReply* list = NULL;
     redisReply* tempReply = NULL;
@@ -664,6 +662,7 @@ l_start:
         redis_port = REDIS_PORT;
     }
 
+l_start:
     LOG_INFO("Connecting to Redis in sync mode!");
     gs_sync_context = redisConnectWithTimeout(redis_ip, redis_port, timeout);
     if(NULL == gs_sync_context) {
@@ -719,27 +718,35 @@ l_start:
     // load configuration here
     
     // load temp threshold for enable heating
+    LOG_INFO("SUBSCRIBE %s/%s", FLAG_KEY, TEMP_THRESHOLD_NAME);
     redisAsyncCommand(gs_async_context, thresholdChangeCallback, NULL, "SUBSCRIBE %s/%s", FLAG_KEY, TEMP_THRESHOLD_NAME);
 
     // load room temperature topic
-    room_temp_reply = redisCommand(gs_sync_context,"HGET %s %s", FLAG_KEY, ROOM_TEMP_NAME);
-    if(NULL == room_temp_reply) {
+    LOG_INFO("HGET %s %s", FLAG_KEY, ROOM_TEMP_NAME);
+    reply = redisCommand(gs_sync_context,"HGET %s %s", FLAG_KEY, ROOM_TEMP_NAME);
+    if(NULL == reply) {
         LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
         goto l_free_async_redis;
     }
     
-    redisAsyncCommand(gs_async_context, roomTempChangeCallback, NULL, "SUBSCRIBE %s", room_temp_reply->str);
+    LOG_INFO("SUBSCRIBE %s", reply->str);
+    redisAsyncCommand(gs_async_context, roomTempChangeCallback, NULL, "SUBSCRIBE %s", reply->str);
+    freeReplyObject(reply);
 
     // load heating water temperature topic
-    water_temp_reply = redisCommand(gs_sync_context,"HGET %s %s", FLAG_KEY, WATER_TEMP_NAME);
-    if(NULL == water_temp_reply) {
+    LOG_INFO("HGET %s %s", FLAG_KEY, WATER_TEMP_NAME);
+    reply = redisCommand(gs_sync_context,"HGET %s %s", FLAG_KEY, WATER_TEMP_NAME);
+    if(NULL == reply) {
         LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
         goto l_free_reply;
     }
     
-    redisAsyncCommand(gs_async_context, waterTempChangeCallback, NULL, "SUBSCRIBE %s", water_temp_reply->str);
+    LOG_INFO("SUBSCRIBE %s", reply->str);
+    redisAsyncCommand(gs_async_context, waterTempChangeCallback, NULL, "SUBSCRIBE %s", reply->str);
+    freeReplyObject(reply);
     
     // load temperature postfix string
+    LOG_INFO("HGET %s %s", FLAG_KEY, TEMP_POSTFIX);
     temp_postfix_reply = redisCommand(gs_sync_context,"HGET %s %s", FLAG_KEY, TEMP_POSTFIX);
     if(NULL == temp_postfix_reply) {
         LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
@@ -747,6 +754,7 @@ l_start:
     }
 
     // load target temperature postfix string
+    LOG_INFO("HGET %s %s", FLAG_KEY, TARGET_POSTFIX);
     target_postfix_reply = redisCommand(gs_sync_context,"HGET %s %s", FLAG_KEY, TARGET_POSTFIX);
     if(NULL == target_postfix_reply) {
         LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
@@ -754,12 +762,14 @@ l_start:
     }
     
     // load all rooms and switches
+    LOG_INFO("HGET %s %s", FLAG_KEY, HASH_LIST_NAME);
     tempReply = redisCommand(gs_sync_context,"HGET %s %s", FLAG_KEY, HASH_LIST_NAME);
     if(NULL == tempReply) {
         LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
         goto l_free_reply;
     }
     
+    LOG_INFO("HKEYS %s", tempReply->str);
     list = redisCommand(gs_sync_context,"HKEYS %s", tempReply->str);
     
     if(NULL == list) {
@@ -771,6 +781,7 @@ l_start:
     // transverse all rooms and allocate necessary storage spaces
     for(size_t i = 0; i < list->elements; i++) {
         // key is target temperature topic, value is switch topic
+        LOG_INFO("Create Node %d", i);
         if(!cur_node) {
             room_list = (list_node*)malloc(sizeof(list_node));
             cur_node = room_list;
@@ -880,6 +891,7 @@ l_start:
         redisAsyncCommand(gs_async_context, targetTempChangeCallback, cur_node, "SUBSCRIBE %s/%s", list->element[i]->str, target_postfix_reply->str);
     }
     freeReplyObject(list);
+    list = NULL;
     freeReplyObject(tempReply);
     tempReply = NULL;
 
@@ -913,41 +925,9 @@ l_start:
 
     freeReplyObject(reply);
 
-    // load room temperature
-    LOG_INFO("Load room temperature");
-    LOG_DETAILS("GET %s", room_temp_reply);
-    reply = redisCommand(gs_sync_context, "GET %s", room_temp_reply);
-
-    if(NULL == reply) {
-        LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
-        goto l_free_reply;
-    }
-    
-    if(reply->str) {
-        gs_room_temp = atoi(reply->str);
-    }
-
-    freeReplyObject(reply);
-
-    // load water temperature
-    LOG_INFO("Load water temperature");
-    LOG_DETAILS("GET %s", water_temp_reply);
-    reply = redisCommand(gs_sync_context,"GET %s", water_temp_reply);
-
-    if(NULL == reply) {
-        LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
-        goto l_free_reply;
-    }
-
-    if(reply->str) {
-        gs_water_temp = atoi(reply->str);
-    }
-
-    freeReplyObject(reply);
-
     LOG_INFO("Loading log_level configuration!");
-    LOG_DETAILS("GET %s", LOG_LEVEL_FLAG_VALUE);
-    reply = redisCommand(gs_sync_context,"GET %s", LOG_LEVEL_FLAG_VALUE);
+    LOG_DETAILS("GET %s/%s", FLAG_KEY, LOG_LEVEL_FLAG_VALUE);
+    reply = redisCommand(gs_sync_context,"GET %s/%s", FLAG_KEY, LOG_LEVEL_FLAG_VALUE);
 
     if(NULL == reply) {
         LOG_ERROR("Failed to sync query redis %s", gs_sync_context->errstr);
@@ -964,6 +944,7 @@ l_start:
 
     // start loop
     event_base_dispatch(base);
+
 l_free_reply:
     if(tempReply) {
         freeReplyObject(tempReply);
@@ -975,7 +956,7 @@ l_free_reply:
         freeReplyObject(temp->sw_topic);
         free(temp);
     }
-
+    
     if(target_postfix_reply) {
         freeReplyObject(target_postfix_reply);
     }
@@ -987,15 +968,7 @@ l_free_reply:
     if(list) {
         freeReplyObject(list);
     }
-    
-    if(water_temp_reply) {
-        freeReplyObject(water_temp_reply);
-    }
-    
-    if(room_temp_reply) {
-        freeReplyObject(room_temp_reply);
-    }
-    
+        
 l_free_async_redis:
     redisAsyncFree(gs_async_context);
     event_base_free(base);

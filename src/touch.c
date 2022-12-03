@@ -317,7 +317,7 @@ l_process_click_failed:
 #endif
 
     unsigned char temp, cur_state = 0;
-    unsigned char cmd = 0, active = 0, inactive_cnt = 0;
+    unsigned char cmd = 0;//, active = 0, inactive_cnt = 0;
     unsigned int  x = 0, y = 0;
     
     int serv_port = 0;
@@ -377,8 +377,8 @@ l_start:
     x = 0;
     y = 0;
     cmd = 0;
-    active = 0;
-    inactive_cnt = 0;
+//    active = 0;
+//    inactive_cnt = 0;
     
     LOG_DETAILS("Connecting to touch controller %s %d!", serv_ip, serv_port);
     gs_socket = to_connect(serv_ip, serv_port);
@@ -434,6 +434,11 @@ l_start:
     LOG_DETAILS("Loading target temperature!");
     EXEC_REDIS_CMD(gs_temp_topic, l_free_redis_reply, "GET %s/%s/%s", FLAG_KEY, serv_ip, TARGET_TEMP_TOPIC);
     
+    LOG_DETAILS("Switch to DB 1!");
+    EXEC_REDIS_CMD(reply, l_free_redis_reply, "SELECT 1");
+    freeReplyObject(reply);
+    reply = NULL;
+    
     EXEC_REDIS_CMD(reply, l_free_redis_reply, "GET %s", gs_temp_topic->str);
     
     if(reply->str) {
@@ -452,11 +457,6 @@ l_start:
     freeReplyObject(reply);
     reply = NULL;
     
-    LOG_DETAILS("Switch to DB 1!");
-    EXEC_REDIS_CMD(reply, l_free_redis_reply, "SELECT 1");
-    freeReplyObject(reply);
-    reply = NULL;
-    
     LOG_DETAILS("Publish current target temperture!");
     EXEC_REDIS_CMD(reply, l_free_redis_reply, "PUBLISH %s %d", gs_temp_topic->str, temp);
     freeReplyObject(reply);
@@ -467,7 +467,7 @@ l_start:
     freeReplyObject(reply);
     reply = NULL;
     
-    active = 1;
+//    active = 1;
 
     LOG_DETAILS("Start loop!");
     
@@ -515,17 +515,17 @@ l_start:
             reply = NULL;
             
             LOG_DETAILS("Check touch controller idle time!");
-            if(active) {
-                if(200 == inactive_cnt) {
-                    LOG_DETAILS("Touch idle timeout reduce backlight of LCD!");
-                    active = 0;
-                    EXEC_REDIS_CMD(reply, l_free_redis_reply, "PUBLISH %s/%s/%s %d", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC, LCD_IDLE_BACKLIGHT);
-                    freeReplyObject(reply);
-                    reply = NULL;
-                } else {
-                    inactive_cnt++;
-                }
-            }
+//            if(active) {
+//                if(200 == inactive_cnt) {
+//                    LOG_DETAILS("Touch idle timeout reduce backlight of LCD!");
+//                    active = 0;
+//                    EXEC_REDIS_CMD(reply, l_free_redis_reply, "PUBLISH %s/%s/%s %d", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC, LCD_IDLE_BACKLIGHT);
+//                    freeReplyObject(reply);
+//                    reply = NULL;
+//                } else {
+//                    inactive_cnt++;
+//                }
+//            }
         } else {
             LOG_DETAILS("Receiving data!");
             switch(cur_state) {
@@ -555,17 +555,17 @@ l_start:
                 // May need to change to publish switch or increase/decrease target temperature
                 LOG_DETAILS("Input %#X %d %d", cmd, x, y);
                 if(0xB1 == cmd) {
-                    inactive_cnt = 0;
-                    if(active) {
+//                    inactive_cnt = 0;
+//                    if(active) {
                         LOG_DETAILS("Processing %#X %d %d", cmd, x, y);
                         process_click(x, y);
-                    } else {
-                        LOG_DETAILS("LCD backlight is off, update backlight!");
-                        EXEC_REDIS_CMD(reply, l_free_redis_reply, "PUBLISH %s/%s/%s %d", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC, LCD_ACTIVE_BACKLIGHT);
-                        freeReplyObject(reply);
-                        reply = NULL;
-                        active = 1;
-                    }
+//                    } else {
+//                        LOG_DETAILS("LCD backlight is off, update backlight!");
+//                        EXEC_REDIS_CMD(reply, l_free_redis_reply, "PUBLISH %s/%s/%s %d", FLAG_KEY, serv_ip, BRIGHTNESS_TOPIC, LCD_ACTIVE_BACKLIGHT);
+//                        freeReplyObject(reply);
+//                        reply = NULL;
+//                        active = 1;
+//                    }
                 }
             }
         }
