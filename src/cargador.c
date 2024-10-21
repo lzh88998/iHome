@@ -638,7 +638,7 @@ l_start:
     for(int i = 0; i < MAX_OUTPUT_PIN_COUNT; i++ ) {
         LOG_DETAILS("HGET %s/%s %d", FLAG_KEY, serv_ip, i);
         reply[i] = redisCommand(sync_context,"HGET %s/%s %d", FLAG_KEY, serv_ip, i);
-        if(NULL == reply) {
+        if(NULL == reply[i]) {
             LOG_ERROR("Failed to sync query redis %s", sync_context->errstr);
             goto l_free_sync_redis_reply;
         }
