@@ -1,0 +1,12 @@
+[Unit]
+Description=TyConnector is a connector for Tuya IoT platform
+After=redis-server NetworkManager
+
+[Service]
+Type=simple
+PIDFile=/var/run/ty-connector/ty-connector.pid
+ExecStart=/usr/bin/python /usr/local/bin/ty-connector.py
+ExecStop=/usr/bin/redis-cli publish ty-connector/exit exit
+
+[Install]
+WantedBy=multi-user.target
